@@ -1,0 +1,83 @@
+import subprocess
+import sys
+import tempfile
+import unittest
+from pathlib import Path
+from unittest import mock
+
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+
+from ai_dev_council import github_issue
+
+_SAMPLE_DESIGN = {
+    "overview": "顧客管理システム",
+    "requirements": ["顧客のCRUD操作ができる"],
+    "architecture": "Flask + SQLite",
+    "file_plan": [{"path": "app.py", "purpose": "エントリポイント"}],
+    "test_plan": "pytestで単体テストを行う",
+    "open_questions": [],
+}
+
+_SAMPLE_REVIEW_ROUND = [{"claude": {"approved": True, "issues": [], "suggestions": []}}]
+
+_SAMPLE_AGENT_RESULT = {
+    "success": True,
+    "subtype": "success",
+    "result_text": "全テスト成功",
+    "total_cost_usd": 0.12,
+}
+
+
+class TestCreateRunIssue(unittest.TestCase):
+    def test_calls_gh_issue_create_without_close(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            output_dir = Path(tmp)
+            (output_dir / "app.py").write_text("print('hi')", encoding="utf-8")
+
+            fake_result = mock.Mock(stdout="https://github.com/momokuomomo-crypto/ai-dev-council/issues/1\n")
+            with mock.patch.object(github_issue.subprocess, "run", return_value=fake_result) as fake_run:
+                url = github_issue.create_run_issue(
+                    repo="momokuomomo-crypto/ai-dev-council",
+                    task="顧客管理システムを作る",
+                    design=_SAMPLE_DESIGN,
+                    design_review_rounds=_SAMPLE_REVIEW_ROUND,
+                    agent_result=_SAMPLE_AGENT_RESULT,
+                    code_review_rounds=_SAMPLE_REVIEW_ROUND,
+                    output_dir=output_dir,
+                )
+
+        self.assertEqual(url, "https://github.com/momokuomomo-crypto/ai-dev-council/issues/1")
+        args, kwargs = fake_run.call_args
+        argv = args[0]
+        self.assertEqual(argv[:3], ["gh", "issue", "create"])
+        self.assertIn("--repo", argv)
+        self.assertIn("momokuomomo-crypto/ai-dev-council", argv)
+        # closeするサブコマンドは呼ばれない
+        self.assertNotIn("close", argv)
+
+    def test_falls_back_to_file_when_gh_fails(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            output_dir = Path(tmp)
+
+            with mock.patch.object(
+                github_issue.subprocess,
+                "run",
+                side_effect=subprocess.CalledProcessError(1, ["gh"]),
+            ):
+                with self.assertRaises(RuntimeError):
+                    github_issue.create_run_issue(
+                        repo="momokuomomo-crypto/ai-dev-council",
+                        task="タスク",
+                        design=_SAMPLE_DESIGN,
+                        design_review_rounds=_SAMPLE_REVIEW_ROUND,
+                        agent_result=_SAMPLE_AGENT_RESULT,
+                        code_review_rounds=_SAMPLE_REVIEW_ROUND,
+                        output_dir=output_dir,
+                    )
+
+            fallback_path = output_dir / "issue_body_fallback.md"
+            self.assertTrue(fallback_path.exists())
+
+
+if __name__ == "__main__":
+    unittest.main()

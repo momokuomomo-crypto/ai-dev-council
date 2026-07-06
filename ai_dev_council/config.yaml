@@ -1,0 +1,30 @@
+# 設計.md に基づく設定ファイル。
+# モデル名は設計書へ固定せず、ここで指定する。
+
+# 1日あたりの実行回数上限（pipeline.py CLI経由の実行のみカウントする）。
+max_runs_per_day: 3
+
+# ai-dev-council自身のリポジトリ（実行記録issueの作成先）。
+github_repo: momokuomomo-crypto/ai-dev-council
+
+claude:
+  model: claude-sonnet-5
+  max_tokens: 16384
+
+openai:
+  model: gpt-4.1
+  max_tokens: 16384
+
+gemini:
+  model: gemini-2.5-flash
+  max_output_tokens: 16384
+
+# Claude Agent SDKによる自律コーディングエージェント（実装・実装修正ステージ）の設定。
+# 固定回数のAPI呼び出しではなく、多ターンの自律実行になるため他プロバイダーとは
+# 別に設定する。
+claude_agent:
+  model: claude-sonnet-5
+  max_turns: 40
+  # acceptEdits: ファイル編集は自動承認するが、allowed_tools外の操作は
+  # フェイルセーフに倒す。bypassPermissionsは使わない。
+  permission_mode: acceptEdits

@@ -1,0 +1,6 @@
+anthropic
+openai
+google-genai
+python-dotenv
+pyyaml
+claude-agent-sdk==0.2.110
