@@ -5,9 +5,8 @@ GitHub issue記録」までを自動実行する、[ai-council](https://github.c
 の姉妹ツール（プログラミング特化版）。ai-councilは「テーマについて話し合う」
 会話専用ツールだが、ai-dev-councilは実際にコードを生成・実行・修正する。
 
-gitやコマンド操作に慣れていない場合は、まずai-councilの
-[かんたんセットアップガイド](https://github.com/momokuomomo-crypto/ai-council/blob/master/かんたんセットアップガイド.md)
-を参照すること（同じ構成を前提とする）。
+gitやコマンド操作に慣れていない場合は、まず
+[かんたんセットアップガイド](かんたんセットアップガイド.md)を参照すること。
 
 ---
 
