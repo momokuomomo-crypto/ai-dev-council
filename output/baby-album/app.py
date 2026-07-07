@@ -32,6 +32,12 @@ app.config["DATABASE_PATH"] = config.DATABASE_PATH
 app.config["MAX_NAME_LENGTH"] = config.MAX_NAME_LENGTH
 app.config["MAX_MESSAGE_LENGTH"] = config.MAX_MESSAGE_LENGTH
 
+# WSGI経由（PythonAnywhere等）でapp.pyがimportされる場合、
+# `if __name__ == "__main__":` は実行されないため、DB初期化・
+# アップロードフォルダ作成はモジュール読み込み時に行う
+# （CREATE TABLE IF NOT EXISTS / os.makedirs(exist_ok=True)なので
+# 複数回呼ばれても問題ない）。
+
 
 # ---------------------------------------------------------------------------
 # DB関連
@@ -75,6 +81,11 @@ def ensure_upload_folder():
     folder = app.config["UPLOAD_FOLDER"]
     if not os.path.isdir(folder):
         os.makedirs(folder, exist_ok=True)
+
+
+# モジュール読み込み時に一度実行しておく（WSGI経由でも確実に初期化するため）
+init_db()
+ensure_upload_folder()
 
 
 # ---------------------------------------------------------------------------
