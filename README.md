@@ -89,6 +89,49 @@ python -m ai_dev_council.pipeline \
 
 ---
 
+## ai-councilと組み合わせた使い方（要件定義→実装）
+
+ai-dev-council自身の設計ステージ（OpenAIが1回で設計を作る）だけでは
+要件が固まりきらないことがある。その場合、まず
+[ai-council](https://github.com/momokuomomo-crypto/ai-council)で
+要件・仕様を3社に議論させて固めてから、その結果を`--context-file`で
+ai-dev-councilに引き継ぐとよい。この連携のためにコードを変更する必要は
+なく、既存の`--context-file`（参考情報を渡す仕組み）だけで実現できる。
+
+### 手順
+
+1. **要件定義・設計（ai-council側）**：作りたいものの要件について
+   3社に話し合わせる。
+
+   ```
+   python -m ai_council.council "<作りたいものの要件・仕様について話し合わせたいテーマ>" --max-rounds 2
+   ```
+
+   実行すると`./output/`配下に`{タイムスタンプ}_ai_council_summary.txt`
+   （共通認識・相違点・最終提案）が生成される。
+
+2. **実装（ai-dev-council側）**：そのsummary.txtを参考情報として渡し、
+   実装させる。
+
+   ```
+   python -m ai_dev_council.pipeline "<タスクの説明>" \
+     --context-file "<ai-councilが出力したsummary.txtのパス>" \
+     --output-dir ./output/<好きな名前>
+   ```
+
+   ai-dev-councilの設計ステージ（OpenAI）が、このcontext-fileの内容
+   （3社の合意済み要件）を踏まえて設計ドキュメントを作成する。
+
+### 役割分担
+
+- **ai-council**：要件定義・仕様の合意形成（会話専用、コードは書かない）
+- **ai-dev-council**：合意済みの要件を踏まえた実装（実際にコード＋テストを書く）
+
+それぞれのツールの役割は変えず、間はファイル（summary.txt）を手動で
+橋渡しするだけで連携できる。
+
+---
+
 ## 実行回数・費用の制限
 
 1日あたりの実行回数はデフォルトで3回まで（`config.yaml`の`max_runs_per_day`
