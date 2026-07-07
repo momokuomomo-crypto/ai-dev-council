@@ -18,6 +18,7 @@ from typing import Dict, List, Optional
 from claude_agent_sdk import (
     AssistantMessage,
     ClaudeAgentOptions,
+    ClaudeSDKError,
     ResultMessage,
     TextBlock,
     query,
@@ -82,18 +83,39 @@ def _build_fix_prompt(
 
 
 async def _run_query(prompt: str, output_dir: Path, agent_config: Dict[str, object]) -> Dict[str, object]:
-    """query()を実行し、ResultMessageとAssistantMessageのテキストを収集して返す。"""
+    """
+    query()を実行し、ResultMessageとAssistantMessageのテキストを収集して返す。
+
+    max_turns到達時、Claude Agent SDKはResultMessage（subtype="error_max_turns"等）
+    を返すのではなく、ClaudeSDKError（ProcessError等）を送出することが実際の
+    実行で確認された。この場合、それまでにoutput_dir配下へ書き込まれたファイルは
+    残っている可能性が高いため、例外を上に伝播させてパイプライン全体を
+    クラッシュさせるのではなく、「失敗したが記録は残す」結果として返す。
+    """
     options = _build_options(output_dir, agent_config)
     transcript: List[str] = []
     result_message: Optional[ResultMessage] = None
 
-    async for message in query(prompt=prompt, options=options):
-        if isinstance(message, AssistantMessage):
-            for block in message.content:
-                if isinstance(block, TextBlock):
-                    transcript.append(block.text)
-        elif isinstance(message, ResultMessage):
-            result_message = message
+    try:
+        async for message in query(prompt=prompt, options=options):
+            if isinstance(message, AssistantMessage):
+                for block in message.content:
+                    if isinstance(block, TextBlock):
+                        transcript.append(block.text)
+            elif isinstance(message, ResultMessage):
+                result_message = message
+    except ClaudeSDKError as e:
+        return {
+            "success": False,
+            "subtype": "sdk_error",
+            "result_text": (
+                f"Claude Agent SDKでエラーが発生し、実行が途中で終了しました: {e}\n"
+                "（output_dir配下にそれまでの作業内容が残っている可能性があります）"
+            ),
+            "total_cost_usd": None,
+            "usage": None,
+            "transcript": "\n".join(transcript),
+        }
 
     if result_message is None:
         raise RuntimeError("Claude Agent SDKからResultMessageが返されませんでした。")

@@ -71,6 +71,27 @@ class TestRunImplementation(unittest.TestCase):
         self.assertEqual(result["subtype"], "success")
         self.assertIn("ファイルを作成しています", result["transcript"])
 
+    def test_sdk_error_returns_failed_result_instead_of_raising(self):
+        # 実際の実行で確認された挙動：max_turns到達時、SDKはResultMessageではなく
+        # ClaudeSDKError（ProcessError等）を送出する。これを捕まえて、
+        # クラッシュさせずに失敗結果として返せることを検証する。
+        async def _fake_query_raising(prompt, options):
+            if False:
+                yield None  # pragma: no cover (ジェネレータにするためのダミー)
+            raise claude_coding_agent.ClaudeSDKError(
+                "Claude Code returned an error result: Reached maximum number of turns (15)"
+            )
+
+        with mock.patch.object(claude_coding_agent, "query", side_effect=_fake_query_raising):
+            with tempfile.TemporaryDirectory() as tmp:
+                result = claude_coding_agent.run_implementation(
+                    "タスク", _SAMPLE_DESIGN, Path(tmp), {"max_turns": 15}
+                )
+
+        self.assertFalse(result["success"])
+        self.assertEqual(result["subtype"], "sdk_error")
+        self.assertIn("Reached maximum number of turns", result["result_text"])
+
     def test_raises_when_no_result_message_returned(self):
         messages = [_FakeAssistantMessage(["途中経過"])]
 
