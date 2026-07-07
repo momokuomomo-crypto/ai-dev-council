@@ -24,7 +24,10 @@ gemini:
 # 別に設定する。
 claude_agent:
   model: claude-sonnet-5
-  max_turns: 40
+  # 40ターンは費用・時間がかかりすぎるとの判断で15に引き下げた
+  # （ホットドッグCLI程度の規模なら実績上足りている）。
+  # 複数ページのHP等、より大規模なタスクでは足りない場合がある。
+  max_turns: 15
   # acceptEdits: ファイル編集は自動承認するが、allowed_tools外の操作は
   # フェイルセーフに倒す。bypassPermissionsは使わない。
   permission_mode: acceptEdits
