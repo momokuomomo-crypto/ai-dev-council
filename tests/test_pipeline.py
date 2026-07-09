@@ -9,6 +9,15 @@ from ai_dev_council import pipeline
 
 _TASK = "webで動く顧客管理システムを作る"
 
+_FAKE_TEST_RUN = {
+    "log_path": "test_logs/fake_pytest_log.txt",
+    "csv_path": "test_logs/fake_test_results.csv",
+    "returncode": 0,
+    "total": 0,
+    "passed": 0,
+    "failed": 0,
+}
+
 _SAMPLE_DESIGN = {
     "overview": "顧客管理システム",
     "requirements": ["顧客のCRUD操作ができる"],
@@ -165,13 +174,18 @@ class TestRunPipeline(unittest.TestCase):
                                 pipeline, "run_code_review", return_value=(None, [{"gemini": _fake_review(True)}])
                             ):
                                 with mock.patch.object(
-                                    pipeline.github_issue,
-                                    "create_run_issue",
-                                    return_value="https://github.com/x/y/issues/1",
-                                ) as fake_issue:
-                                    result = pipeline.run_pipeline(
-                                        _TASK, Path("/tmp/out"), verbose=False
-                                    )
+                                    pipeline.test_runner,
+                                    "run_tests_and_save_log",
+                                    return_value=_FAKE_TEST_RUN,
+                                ):
+                                    with mock.patch.object(
+                                        pipeline.github_issue,
+                                        "create_run_issue",
+                                        return_value="https://github.com/x/y/issues/1",
+                                    ) as fake_issue:
+                                        result = pipeline.run_pipeline(
+                                            _TASK, Path("/tmp/out"), verbose=False
+                                        )
 
         fake_impl.assert_called_once()
         fake_issue.assert_called_once()
@@ -209,9 +223,14 @@ class TestRunPipeline(unittest.TestCase):
                                 pipeline, "run_code_review", return_value=(fix_result, [])
                             ):
                                 with mock.patch.object(
-                                    pipeline.github_issue, "create_run_issue", return_value="url"
+                                    pipeline.test_runner,
+                                    "run_tests_and_save_log",
+                                    return_value=_FAKE_TEST_RUN,
                                 ):
-                                    result = pipeline.run_pipeline(_TASK, Path("/tmp/out"), verbose=False)
+                                    with mock.patch.object(
+                                        pipeline.github_issue, "create_run_issue", return_value="url"
+                                    ):
+                                        result = pipeline.run_pipeline(_TASK, Path("/tmp/out"), verbose=False)
 
         self.assertEqual(result["agent_result"], fix_result)
 

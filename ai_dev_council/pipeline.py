@@ -28,6 +28,7 @@ from . import (
     gemini_provider,
     github_issue,
     openai_provider,
+    test_runner,
     usage_tracker,
 )
 
@@ -184,6 +185,21 @@ def _print_review_round(stage_label: str, round_num: int, feedback: Dict[str, Di
             print(f"    [{issue.get('severity')}] {issue.get('description')}")
 
 
+def _run_and_report_tests(output_dir: Path, label: str, verbose: bool) -> Dict[str, object]:
+    """
+    実際にpytestを実行し、生ログ・テストケース単位のCSVをoutput_dir配下に
+    保存する。戻り値はJSON化できるよう、Pathをstrへ変換して返す
+    （_write_reportでそのままjson.dumpsに渡すため）。
+    """
+    result = test_runner.run_tests_and_save_log(output_dir, label=label)
+    if verbose:
+        print(f"\n=== テスト実行結果（{label}） ===")
+        print(f"  {result['passed']}件成功 / {result['failed']}件失敗（計{result['total']}件）")
+        print(f"  ログ: {result['log_path']}")
+        print(f"  CSV: {result['csv_path']}")
+    return {**result, "log_path": str(result["log_path"]), "csv_path": str(result["csv_path"])}
+
+
 def run_pipeline(
     task: str,
     output_dir: Path,
@@ -213,12 +229,16 @@ def run_pipeline(
         print("\n=== 実装結果 ===")
         print(context_builder.build_test_results_summary(agent_result))
 
+    test_run_implementation = _run_and_report_tests(output_dir, "implementation", verbose)
+
     on_code_round = (lambda n, fb: _print_review_round("実装レビュー", n, fb)) if verbose else None
     last_fix_result, code_review_rounds = run_code_review(
         task, final_design, output_dir, agent_config, max_implementation_rounds, on_round=on_code_round
     )
     if last_fix_result is not None:
         agent_result = last_fix_result
+
+    test_run_final = _run_and_report_tests(output_dir, "final", verbose)
 
     issue_url = github_issue.create_run_issue(
         repo=config["github_repo"],
@@ -228,6 +248,7 @@ def run_pipeline(
         agent_result=agent_result,
         code_review_rounds=code_review_rounds,
         output_dir=output_dir,
+        test_run_final=test_run_final,
     )
 
     return {
@@ -236,6 +257,8 @@ def run_pipeline(
         "design_review_rounds": design_review_rounds,
         "agent_result": agent_result,
         "code_review_rounds": code_review_rounds,
+        "test_run_implementation": test_run_implementation,
+        "test_run_final": test_run_final,
         "issue_url": issue_url,
     }
 

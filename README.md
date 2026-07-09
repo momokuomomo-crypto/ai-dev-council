@@ -180,6 +180,23 @@ Gemini+OpenAI（Claudeが書いたコードをClaude自身は見ない）。
 
 ---
 
+## テスト実行記録
+
+エージェント（Claude Agent SDK）の自己申告だけでなく、実装直後と
+実装レビュー完了後の2時点で、実際に`pytest`を実行してその結果を
+`<output-dir>/test_logs/`配下に保存する（エージェント自身の実行とは
+別に、パイプライン側が確認のため独立して実行するもの）。
+
+* `{タイムスタンプ}_{implementation|final}_pytest_log.txt` — 生ログ全文
+* `{タイムスタンプ}_{implementation|final}_test_results.csv` — テスト
+  ケース単位の結果一覧（列: テストケース／結果／ログファイル／行数。
+  「行数」は該当するテスト結果行が生ログの何行目にあるかを示す）
+
+GitHub issueにも、最終状態のテスト実行結果（成功/失敗件数とファイル
+パス）を記載する。
+
+---
+
 ## ディレクトリ構成
 
 ```
@@ -194,6 +211,7 @@ ai_dev_council/
   gemini_provider.py     # 設計レビュー・実装レビュー
   claude_coding_agent.py # Claude Agent SDKによる実装・修正
   context_builder.py     # 生成コードをレビュー用テキストへ連結
+  test_runner.py         # pytestを実際に実行し、生ログ・結果CSVを保存
   github_issue.py        # 実行記録issueの作成（closeしない）
   pipeline.py            # オーケストレーター本体 + CLI
 tests/                   # モックテスト（実APIも実Agent SDK実行も呼ばない）

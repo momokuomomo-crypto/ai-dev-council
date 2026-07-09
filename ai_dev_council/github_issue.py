@@ -10,7 +10,7 @@ OPENのまま残す（closeしない）。
 import subprocess
 from datetime import datetime
 from pathlib import Path
-from typing import Dict, List
+from typing import Dict, List, Optional
 
 from . import context_builder
 
@@ -43,6 +43,18 @@ def _build_review_rounds_text(rounds: List[Dict[str, Dict[str, object]]], label:
     return "\n".join(lines)
 
 
+def _build_test_run_text(test_run_final: Optional[Dict[str, object]]) -> str:
+    if not test_run_final:
+        return "（テスト実行記録はありません）"
+    return (
+        f"- {test_run_final.get('passed', '不明')}件成功 / "
+        f"{test_run_final.get('failed', '不明')}件失敗"
+        f"（計{test_run_final.get('total', '不明')}件）\n"
+        f"- 生ログ: `{test_run_final.get('log_path', '不明')}`\n"
+        f"- テストケース単位の結果CSV: `{test_run_final.get('csv_path', '不明')}`"
+    )
+
+
 def _build_issue_body(
     task: str,
     design: Dict[str, object],
@@ -50,6 +62,7 @@ def _build_issue_body(
     agent_result: Dict[str, object],
     code_review_rounds: List[Dict[str, Dict[str, object]]],
     output_dir: Path,
+    test_run_final: Optional[Dict[str, object]] = None,
 ) -> str:
     file_plan_text = "\n".join(
         f"- `{item['path']}`: {item['purpose']}" for item in design.get("file_plan", [])
@@ -93,6 +106,10 @@ def _build_issue_body(
 
 - コスト: ${agent_result.get('total_cost_usd', '不明')}
 
+### 実際のテスト実行結果（最終状態）
+
+{_build_test_run_text(test_run_final)}
+
 ## 実装レビュー
 
 {_build_review_rounds_text(code_review_rounds, "実装レビュー")}
@@ -115,6 +132,7 @@ def create_run_issue(
     agent_result: Dict[str, object],
     code_review_rounds: List[Dict[str, Dict[str, object]]],
     output_dir: Path,
+    test_run_final: Optional[Dict[str, object]] = None,
 ) -> str:
     """
     `gh issue create`を実行し、作成されたissueのURLを返す。closeは行わない
@@ -125,7 +143,13 @@ def create_run_issue(
     """
     title = _build_issue_title(task)
     body = _build_issue_body(
-        task, design, design_review_rounds, agent_result, code_review_rounds, output_dir
+        task,
+        design,
+        design_review_rounds,
+        agent_result,
+        code_review_rounds,
+        output_dir,
+        test_run_final,
     )
 
     try:

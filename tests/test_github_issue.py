@@ -55,6 +55,33 @@ class TestCreateRunIssue(unittest.TestCase):
         # closeするサブコマンドは呼ばれない
         self.assertNotIn("close", argv)
 
+    def test_includes_test_run_paths_in_body_when_provided(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            output_dir = Path(tmp)
+
+            fake_result = mock.Mock(stdout="https://github.com/momokuomomo-crypto/ai-dev-council/issues/2\n")
+            with mock.patch.object(github_issue.subprocess, "run", return_value=fake_result) as fake_run:
+                github_issue.create_run_issue(
+                    repo="momokuomomo-crypto/ai-dev-council",
+                    task="顧客管理システムを作る",
+                    design=_SAMPLE_DESIGN,
+                    design_review_rounds=_SAMPLE_REVIEW_ROUND,
+                    agent_result=_SAMPLE_AGENT_RESULT,
+                    code_review_rounds=_SAMPLE_REVIEW_ROUND,
+                    output_dir=output_dir,
+                    test_run_final={
+                        "passed": 10,
+                        "failed": 1,
+                        "total": 11,
+                        "log_path": "test_logs/x_pytest_log.txt",
+                        "csv_path": "test_logs/x_test_results.csv",
+                    },
+                )
+
+        body = fake_run.call_args.args[0][fake_run.call_args.args[0].index("--body") + 1]
+        self.assertIn("10件成功", body)
+        self.assertIn("test_logs/x_test_results.csv", body)
+
     def test_falls_back_to_file_when_gh_fails(self):
         with tempfile.TemporaryDirectory() as tmp:
             output_dir = Path(tmp)
