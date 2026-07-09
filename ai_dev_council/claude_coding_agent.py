@@ -18,7 +18,6 @@ from typing import Dict, List, Optional
 from claude_agent_sdk import (
     AssistantMessage,
     ClaudeAgentOptions,
-    ClaudeSDKError,
     ResultMessage,
     TextBlock,
     query,
@@ -87,10 +86,14 @@ async def _run_query(prompt: str, output_dir: Path, agent_config: Dict[str, obje
     query()を実行し、ResultMessageとAssistantMessageのテキストを収集して返す。
 
     max_turns到達時、Claude Agent SDKはResultMessage（subtype="error_max_turns"等）
-    を返すのではなく、ClaudeSDKError（ProcessError等）を送出することが実際の
-    実行で確認された。この場合、それまでにoutput_dir配下へ書き込まれたファイルは
-    残っている可能性が高いため、例外を上に伝播させてパイプライン全体を
-    クラッシュさせるのではなく、「失敗したが記録は残す」結果として返す。
+    を返すのではなく例外を送出することが実際の実行で確認された。当初は
+    ClaudeSDKError（ProcessError等）のみを想定していたが、実際にはSDK内部
+    （_internal/query.py の message readerループ）が`raise Exception(...)`と
+    素のExceptionで送出するケースがあることが実行で確認されたため、
+    ClaudeSDKErrorに限定せずExceptionを広く捕捉する。この場合、それまでに
+    output_dir配下へ書き込まれたファイルは残っている可能性が高いため、
+    例外を上に伝播させてパイプライン全体をクラッシュさせるのではなく、
+    「失敗したが記録は残す」結果として返す。
     """
     options = _build_options(output_dir, agent_config)
     transcript: List[str] = []
@@ -104,7 +107,7 @@ async def _run_query(prompt: str, output_dir: Path, agent_config: Dict[str, obje
                         transcript.append(block.text)
             elif isinstance(message, ResultMessage):
                 result_message = message
-    except ClaudeSDKError as e:
+    except Exception as e:
         return {
             "success": False,
             "subtype": "sdk_error",

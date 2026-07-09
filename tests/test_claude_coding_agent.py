@@ -72,13 +72,14 @@ class TestRunImplementation(unittest.TestCase):
         self.assertIn("ファイルを作成しています", result["transcript"])
 
     def test_sdk_error_returns_failed_result_instead_of_raising(self):
-        # 実際の実行で確認された挙動：max_turns到達時、SDKはResultMessageではなく
-        # ClaudeSDKError（ProcessError等）を送出する。これを捕まえて、
-        # クラッシュさせずに失敗結果として返せることを検証する。
+        # 実際の実行で確認された挙動：max_turns到達時、SDK内部の
+        # message readerループ（_internal/query.py）が素のExceptionを
+        # 送出する（ClaudeSDKErrorのサブクラスとは限らない）。これを
+        # 捕まえて、クラッシュさせずに失敗結果として返せることを検証する。
         async def _fake_query_raising(prompt, options):
             if False:
                 yield None  # pragma: no cover (ジェネレータにするためのダミー)
-            raise claude_coding_agent.ClaudeSDKError(
+            raise Exception(
                 "Claude Code returned an error result: Reached maximum number of turns (15)"
             )
 
