@@ -1,3 +1,4 @@
+import os
 import sys
 import tempfile
 import unittest
@@ -106,6 +107,49 @@ class TestDotnetProjectDetection(unittest.TestCase):
             self.assertIn("PASSED", csv_text)
             self.assertIn("Namespace.ClassTests.FailingTest", csv_text)
             self.assertIn("FAILED", csv_text)
+
+    def test_resolves_relative_output_dir_to_avoid_double_nested_results_dir(self):
+        """
+        実際の不具合の再現テスト。output_dirが相対パスのまま
+        --results-directoryに渡されると、dotnet test自身のcwd
+        （=output_dir）基準でその相対パスが再解決され、
+        `output_dir/output_dir/test_logs/...`という二重ネストした
+        場所に結果ファイルが書き出されてしまい、Python側
+        （呼び出し時のカレントディレクトリ基準で読み取る）は
+        見つけられなかった。output_dirを絶対パス化することで防ぐ。
+        """
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp).resolve()
+            (root / "relative_subdir").mkdir()
+            (root / "relative_subdir" / "MyApp.csproj").write_text("<Project />", encoding="utf-8")
+
+            original_cwd = os.getcwd()
+            os.chdir(root)
+            try:
+                relative_output_dir = Path("relative_subdir")
+
+                def _fake_run(cmd, cwd, capture_output, text, timeout, env):
+                    # dotnet testは --results-directory の値が相対パスなら
+                    # 自身のcwd（=呼び出し時のcwd引数）基準で解決する。
+                    results_dir_arg = cmd[cmd.index("--results-directory") + 1]
+                    resolved_results_dir = Path(cwd) / results_dir_arg
+                    resolved_results_dir.mkdir(parents=True, exist_ok=True)
+                    logger_arg = cmd[cmd.index("--logger") + 1]
+                    trx_filename = logger_arg.split("LogFileName=")[1]
+                    (resolved_results_dir / trx_filename).write_text(_SAMPLE_TRX, encoding="utf-8")
+                    return mock.Mock(stdout="", stderr="")
+
+                with mock.patch.object(test_runner.subprocess, "run", side_effect=_fake_run):
+                    result = test_runner.run_tests_and_save_log(relative_output_dir, label="final")
+            finally:
+                os.chdir(original_cwd)
+
+            self.assertTrue(result["log_path"].is_absolute())
+            self.assertEqual(result["total"], 2)
+            self.assertEqual(result["passed"], 1)
+            self.assertEqual(result["failed"], 1)
+            # 二重ネストしたディレクトリが作られていないこと
+            self.assertFalse((root / "relative_subdir" / "relative_subdir").exists())
 
     def test_prefers_pytest_when_no_csproj(self):
         with tempfile.TemporaryDirectory() as tmp:

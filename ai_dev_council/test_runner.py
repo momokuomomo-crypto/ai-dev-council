@@ -157,7 +157,14 @@ def run_tests_and_save_log(
     `pytest`を実行する。テスト自体が存在しない、コマンドが見つからない等で
     実行自体に失敗した場合もクラッシュさせず、その旨を記録として残す
     （呼び出し元のパイプラインを止めないため）。
+
+    output_dirは相対パスの場合、絶対パスへ解決してから使う。
+    `--results-directory`等、dotnet testに渡す相対パスはdotnet test自身の
+    cwd（=output_dir）基準で再解決されるため、output_dirが相対のままだと
+    `output_dir/output_dir/test_logs/...`のような二重ネストしたパスに
+    結果ファイルが書き出され、Python側で読み取れなくなる不具合があった。
     """
+    output_dir = output_dir.resolve()
     log_dir = output_dir / "test_logs"
     log_dir.mkdir(parents=True, exist_ok=True)
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
