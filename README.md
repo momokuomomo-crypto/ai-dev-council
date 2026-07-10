@@ -7,6 +7,8 @@ GitHub issue記録」までを自動実行する、[ai-council](https://github.c
 
 gitやコマンド操作に慣れていない場合は、まず
 [かんたんセットアップガイド](かんたんセットアップガイド.md)を参照すること。
+要件定義は[docs/要件定義.md](docs/要件定義.md)、詳細設計は
+[docs/設計.md](docs/設計.md)を参照。
 
 ---
 
@@ -215,6 +217,7 @@ ai_dev_council/
   github_issue.py        # 実行記録issueの作成（closeしない）
   pipeline.py            # オーケストレーター本体 + CLI
 tests/                   # モックテスト（実APIも実Agent SDK実行も呼ばない）
+docs/要件定義.md         # 要件定義
 docs/設計.md             # 詳細設計書
 ```
 
