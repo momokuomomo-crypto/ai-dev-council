@@ -1,0 +1,12 @@
+  Determining projects to restore...
+  All projects are up-to-date for restore.
+  PhotoDedupe.Core -> G:\繝槭う繝峨Λ繧､繝暴ai_dev_council\output\photo-dedupe-tool\src\PhotoDedupe.Core\bin\Debug\net8.0\PhotoDedupe.Core.dll
+  PhotoDedupe.Core.Tests -> G:\繝槭う繝峨Λ繧､繝暴ai_dev_council\output\photo-dedupe-tool\tests\PhotoDedupe.Core.Tests\bin\Debug\net8.0\PhotoDedupe.Core.Tests.dll
+Test run for G:\繝槭う繝峨Λ繧､繝暴ai_dev_council\output\photo-dedupe-tool\tests\PhotoDedupe.Core.Tests\bin\Debug\net8.0\PhotoDedupe.Core.Tests.dll (.NETCoreApp,Version=v8.0)
+VSTest version 17.11.1 (x64)
+
+Starting test execution, please wait...
+A total of 1 test files matched the specified pattern.
+Results File: G:\繝槭う繝峨Λ繧､繝暴ai_dev_council\output\photo-dedupe-tool\test_logs\20260711_001950_manual_review_fix_results.trx
+
+Passed!  - Failed:     0, Passed:    54, Skipped:     0, Total:    54, Duration: 555 ms - PhotoDedupe.Core.Tests.dll (net8.0)
