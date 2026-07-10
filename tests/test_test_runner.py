@@ -61,5 +61,64 @@ class TestRunTestsAndSaveLog(unittest.TestCase):
             self.assertIn("失敗しました", result["log_path"].read_text(encoding="utf-8"))
 
 
+_SAMPLE_TRX = """<?xml version="1.0" encoding="utf-8"?>
+<TestRun xmlns="http://microsoft.com/schemas/VisualStudio/TeamTest/2010">
+  <Results>
+    <UnitTestResult testName="Namespace.ClassTests.PassingTest" outcome="Passed" />
+    <UnitTestResult testName="Namespace.ClassTests.FailingTest" outcome="Failed" />
+  </Results>
+</TestRun>
+"""
+
+
+class TestDotnetProjectDetection(unittest.TestCase):
+    def test_runs_dotnet_test_when_csproj_present(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            output_dir = Path(tmp)
+            (output_dir / "MyApp.csproj").write_text("<Project />", encoding="utf-8")
+            log_dir = output_dir / "test_logs"
+
+            def _fake_run(cmd, cwd, capture_output, text, timeout, env):
+                log_dir.mkdir(parents=True, exist_ok=True)
+                # --logger trx;LogFileName=... の値からファイル名を取り出して書き出す
+                logger_arg = cmd[cmd.index("--logger") + 1]
+                trx_filename = logger_arg.split("LogFileName=")[1]
+                (log_dir / trx_filename).write_text(_SAMPLE_TRX, encoding="utf-8")
+                return mock.Mock(
+                    stdout="Passed Namespace.ClassTests.PassingTest\nFailed Namespace.ClassTests.FailingTest\n",
+                    stderr="",
+                )
+
+            with mock.patch.object(test_runner.subprocess, "run", side_effect=_fake_run) as fake_run:
+                result = test_runner.run_tests_and_save_log(output_dir, label="final")
+
+            fake_run.assert_called_once()
+            argv = fake_run.call_args.args[0]
+            self.assertEqual(argv[:2], ["dotnet", "test"])
+
+            self.assertEqual(result["project_type"], "dotnet")
+            self.assertEqual(result["total"], 2)
+            self.assertEqual(result["passed"], 1)
+            self.assertEqual(result["failed"], 1)
+
+            csv_text = result["csv_path"].read_text(encoding="utf-8-sig")
+            self.assertIn("Namespace.ClassTests.PassingTest", csv_text)
+            self.assertIn("PASSED", csv_text)
+            self.assertIn("Namespace.ClassTests.FailingTest", csv_text)
+            self.assertIn("FAILED", csv_text)
+
+    def test_prefers_pytest_when_no_csproj(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            output_dir = Path(tmp)
+            (output_dir / "tests").mkdir()
+            fake_proc = mock.Mock(stdout="", stderr="")
+            with mock.patch.object(test_runner.subprocess, "run", return_value=fake_proc) as fake_run:
+                result = test_runner.run_tests_and_save_log(output_dir)
+
+            self.assertEqual(result["project_type"], "pytest")
+            argv = fake_run.call_args.args[0]
+            self.assertIn("pytest", argv)
+
+
 if __name__ == "__main__":
     unittest.main()
