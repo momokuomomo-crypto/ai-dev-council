@@ -17,6 +17,27 @@ from . import context_builder
 _TITLE_TASK_MAX_CHARS = 60
 
 
+def _has_git_identity() -> bool:
+    """git commitユーザー情報（user.name/user.email）が設定されているか確認する。"""
+    try:
+        for key in ("user.name", "user.email"):
+            result = subprocess.run(["git", "config", "--get", key], capture_output=True, text=True)
+            if result.returncode != 0 or not result.stdout.strip():
+                return False
+        return True
+    except FileNotFoundError:
+        return False
+
+
+def _has_gh_auth() -> bool:
+    """`gh`コマンドでGitHubにログイン済みか確認する。"""
+    try:
+        result = subprocess.run(["gh", "auth", "status"], capture_output=True, text=True)
+        return result.returncode == 0
+    except FileNotFoundError:
+        return False
+
+
 def _build_issue_title(task: str) -> str:
     timestamp = datetime.now().strftime("%Y-%m-%d %H:%M")
     summary = task if len(task) <= _TITLE_TASK_MAX_CHARS else task[:_TITLE_TASK_MAX_CHARS] + "…"
@@ -134,7 +155,7 @@ def create_run_issue(
     output_dir: Path,
     test_run_final: Optional[Dict[str, object]] = None,
     assignee: Optional[str] = None,
-) -> str:
+) -> Optional[str]:
     """
     `gh issue create`を実行し、作成されたissueのURLを返す。closeは行わない
     （このツールの実行記録として残す）。
@@ -144,8 +165,15 @@ def create_run_issue(
     判断）を行う人が別である運用を想定した設定（config.yamlの
     `issue_assignee`）。
 
-    gh CLIの呼び出しに失敗した場合は、issue本文をoutput_dir配下にファイルとして
-    書き出し、その旨を伝える例外を送出する（せっかくの実行記録を失わないため）。
+    git のcommitter情報（user.name/user.email）が未設定、または
+    `gh auth login`が未実施の場合は、GitHubアカウントを持たない人がこの
+    ツールを使うケースを想定し、issue作成自体をスキップする（例外は送出
+    せず、issue本文をoutput_dir配下にファイルとして保存した上でNoneを
+    返す。パイプライン全体はクラッシュさせない）。
+
+    上記の設定が揃っているにもかかわらず`gh issue create`自体が失敗した
+    場合（ネットワークエラー・権限不足等）は、想定外の失敗として気づける
+    よう、従来通りRuntimeErrorを送出する。
     """
     title = _build_issue_title(task)
     body = _build_issue_body(
@@ -157,6 +185,11 @@ def create_run_issue(
         output_dir,
         test_run_final,
     )
+
+    if not (_has_git_identity() and _has_gh_auth()):
+        fallback_path = output_dir / "issue_body_fallback.md"
+        fallback_path.write_text(body, encoding="utf-8")
+        return None
 
     argv = ["gh", "issue", "create", "--repo", repo, "--title", title, "--body", body]
     if assignee:

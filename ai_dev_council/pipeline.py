@@ -342,7 +342,13 @@ def main_cli() -> int:
 
     report_path = _write_report(result, args.output_dir)
     print(f"\nパイプライン実行レポートを出力しました：{report_path}")
-    print(f"GitHub issueを作成しました：{result['issue_url']}")
+    if result["issue_url"]:
+        print(f"GitHub issueを作成しました：{result['issue_url']}")
+    else:
+        print(
+            "GitHub issueは作成しませんでした（git/ghの設定が未完了のため）。"
+            f"内容は {args.output_dir / 'issue_body_fallback.md'} に保存しています。"
+        )
     return 0
 
 
