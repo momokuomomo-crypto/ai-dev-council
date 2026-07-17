@@ -133,10 +133,16 @@ def create_run_issue(
     code_review_rounds: List[Dict[str, Dict[str, object]]],
     output_dir: Path,
     test_run_final: Optional[Dict[str, object]] = None,
+    assignee: Optional[str] = None,
 ) -> str:
     """
     `gh issue create`を実行し、作成されたissueのURLを返す。closeは行わない
     （このツールの実行記録として残す）。
+
+    assigneeを指定すると、作成したissueをそのGitHubユーザーへ自動アサイン
+    する。パイプラインを実行した人と、その後のgit管理（レビュー・マージ等の
+    判断）を行う人が別である運用を想定した設定（config.yamlの
+    `issue_assignee`）。
 
     gh CLIの呼び出しに失敗した場合は、issue本文をoutput_dir配下にファイルとして
     書き出し、その旨を伝える例外を送出する（せっかくの実行記録を失わないため）。
@@ -152,9 +158,13 @@ def create_run_issue(
         test_run_final,
     )
 
+    argv = ["gh", "issue", "create", "--repo", repo, "--title", title, "--body", body]
+    if assignee:
+        argv += ["--assignee", assignee]
+
     try:
         result = subprocess.run(
-            ["gh", "issue", "create", "--repo", repo, "--title", title, "--body", body],
+            argv,
             capture_output=True,
             text=True,
             check=True,

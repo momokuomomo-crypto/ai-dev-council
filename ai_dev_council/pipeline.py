@@ -25,6 +25,7 @@ from . import (
     claude_coding_agent,
     claude_provider,
     context_builder,
+    cost_estimator,
     gemini_provider,
     github_issue,
     openai_provider,
@@ -249,6 +250,7 @@ def run_pipeline(
         code_review_rounds=code_review_rounds,
         output_dir=output_dir,
         test_run_final=test_run_final,
+        assignee=config.get("issue_assignee"),
     )
 
     return {
@@ -291,18 +293,6 @@ def main_cli() -> int:
     config = _load_config()
     max_runs_per_day = config.get("max_runs_per_day", 3)
 
-    fixed_call_count = _estimate_fixed_call_count(args.max_rounds, args.max_implementation_rounds)
-    if not confirm_api_calls(
-        f"OpenAI/Claude/GeminiのAPIを最大{fixed_call_count}回呼び出します"
-        f"（設計1回、設計レビュー最大{2 * args.max_rounds}回、"
-        f"設計改訂最大{max(0, args.max_rounds - 1)}回、"
-        f"実装レビュー最大{2 * args.max_implementation_rounds}回。"
-        "この回数にはClaude Agent SDKによる実装ステージは含まれません — "
-        "別途確認します）。続行しますか？"
-    ):
-        print("中断しました。")
-        return 1
-
     context = ""
     if args.context_file is not None:
         try:
@@ -310,6 +300,27 @@ def main_cli() -> int:
         except FileNotFoundError as e:
             print(f"エラー：{e}")
             return 1
+
+    fixed_call_count = _estimate_fixed_call_count(args.max_rounds, args.max_implementation_rounds)
+    cost_estimate = cost_estimator.estimate_fixed_stage_cost(
+        args.task,
+        context,
+        args.max_rounds,
+        args.max_implementation_rounds,
+        config.get("pricing_usd_per_1m_tokens", {}),
+    )
+    if not confirm_api_calls(
+        f"OpenAI/Claude/GeminiのAPIを最大{fixed_call_count}回呼び出します"
+        f"（設計1回、設計レビュー最大{2 * args.max_rounds}回、"
+        f"設計改訂最大{max(0, args.max_rounds - 1)}回、"
+        f"実装レビュー最大{2 * args.max_implementation_rounds}回。"
+        "この回数にはClaude Agent SDKによる実装ステージは含まれません — "
+        "別途確認します）。\n"
+        f"{cost_estimator.format_estimate_line(cost_estimate)}\n"
+        "続行しますか？"
+    ):
+        print("中断しました。")
+        return 1
 
     try:
         usage_tracker.check_and_increment(max_runs_per_day)

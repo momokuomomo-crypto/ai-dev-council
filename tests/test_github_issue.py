@@ -82,6 +82,46 @@ class TestCreateRunIssue(unittest.TestCase):
         self.assertIn("10件成功", body)
         self.assertIn("test_logs/x_test_results.csv", body)
 
+    def test_assigns_issue_when_assignee_given(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            output_dir = Path(tmp)
+
+            fake_result = mock.Mock(stdout="https://github.com/momokuomomo-crypto/ai-dev-council/issues/3\n")
+            with mock.patch.object(github_issue.subprocess, "run", return_value=fake_result) as fake_run:
+                github_issue.create_run_issue(
+                    repo="momokuomomo-crypto/ai-dev-council",
+                    task="タスク",
+                    design=_SAMPLE_DESIGN,
+                    design_review_rounds=_SAMPLE_REVIEW_ROUND,
+                    agent_result=_SAMPLE_AGENT_RESULT,
+                    code_review_rounds=_SAMPLE_REVIEW_ROUND,
+                    output_dir=output_dir,
+                    assignee="mokuo",
+                )
+
+        argv = fake_run.call_args.args[0]
+        self.assertIn("--assignee", argv)
+        self.assertEqual(argv[argv.index("--assignee") + 1], "mokuo")
+
+    def test_does_not_assign_when_assignee_omitted(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            output_dir = Path(tmp)
+
+            fake_result = mock.Mock(stdout="https://github.com/momokuomomo-crypto/ai-dev-council/issues/4\n")
+            with mock.patch.object(github_issue.subprocess, "run", return_value=fake_result) as fake_run:
+                github_issue.create_run_issue(
+                    repo="momokuomomo-crypto/ai-dev-council",
+                    task="タスク",
+                    design=_SAMPLE_DESIGN,
+                    design_review_rounds=_SAMPLE_REVIEW_ROUND,
+                    agent_result=_SAMPLE_AGENT_RESULT,
+                    code_review_rounds=_SAMPLE_REVIEW_ROUND,
+                    output_dir=output_dir,
+                )
+
+        argv = fake_run.call_args.args[0]
+        self.assertNotIn("--assignee", argv)
+
     def test_falls_back_to_file_when_gh_fails(self):
         with tempfile.TemporaryDirectory() as tmp:
             output_dir = Path(tmp)

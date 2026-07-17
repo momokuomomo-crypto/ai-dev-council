@@ -7,6 +7,11 @@ max_runs_per_day: 3
 # ai-dev-council自身のリポジトリ（実行記録issueの作成先）。
 github_repo: momokuomomo-crypto/ai-dev-council
 
+# 実行記録issue作成時に自動アサインするGitHubユーザー名（任意、空なら未設定）。
+# パイプラインを実行した人と、その後のgit管理（レビュー・マージ等の判断）を
+# 行う人を分ける運用を想定。未設定（空文字）ならアサインしない。
+issue_assignee: ""
+
 claude:
   model: claude-sonnet-5
   max_tokens: 16384
@@ -18,6 +23,22 @@ openai:
 gemini:
   model: gemini-2.5-flash
   max_output_tokens: 16384
+
+# 固定回数API呼び出しステージ（設計・設計レビュー・実装レビュー）の概算コスト
+# 表示に使う単価（1Mトークンあたりのドル）。各社の価格は変わるため、実行前に
+# 公式ページで最新値を確認し、必要なら更新すること（このファイルには反映漏れの
+# リスクがある。あくまで「目安」表示用）。
+# 最終確認日: 2026-07-10（claude-sonnet-5 / gpt-4.1 / gemini-2.5-flash 想定）。
+pricing_usd_per_1m_tokens:
+  claude:
+    input: 3.00
+    output: 15.00
+  openai:
+    input: 2.00
+    output: 8.00
+  gemini:
+    input: 0.30
+    output: 2.50
 
 # Claude Agent SDKによる自律コーディングエージェント（実装・実装修正ステージ）の設定。
 # 固定回数のAPI呼び出しではなく、多ターンの自律実行になるため他プロバイダーとは
