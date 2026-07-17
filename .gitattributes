@@ -1,0 +1,5 @@
+# テキストファイルの改行コードをリポジトリ内・チェックアウト時ともにLFへ
+# 統一する。Windows(core.autocrlf=true)・Mac・Linux・Dockerコンテナ等、
+# 誰の環境でクローンしても同じ改行コードになる（ローカルの.gitconfigに
+# 依存しない、リポジトリ側の設定）。
+* text=auto eol=lf
