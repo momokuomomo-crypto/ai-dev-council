@@ -414,6 +414,13 @@ def api_calculate():
     )
 
 
+# WSGI経由（PythonAnywhere等）でapp.pyがimportされる場合、
+# `if __name__ == "__main__":` は実行されないため、DB初期化は
+# モジュール読み込み時に行う（CREATE TABLE IF NOT EXISTSなので
+# 複数回呼ばれても問題ない）。baby-albumデプロイ時に確認済みのパターン。
+init_db()
+
+
 @app.route("/api/identify", methods=["POST"])
 def api_identify():
     """写真からの商品判別API（補助機能）。
