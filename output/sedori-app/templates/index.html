@@ -1,0 +1,140 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>せどり仕入れ判断支援 - ホーム</title>
+<link rel="manifest" href="{{ url_for('static', filename='manifest.json') }}">
+<meta name="theme-color" content="#1f6feb">
+<link rel="apple-touch-icon" href="{{ url_for('static', filename='icons/icon-192.svg') }}">
+<link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body>
+<header class="app-header">
+  <h1>せどり仕入れ判断支援</h1>
+  <nav class="app-nav">
+    <a href="{{ url_for('index') }}" class="active">ホーム</a>
+    <a href="{{ url_for('product_list') }}">一覧</a>
+    <a href="{{ url_for('settings_view') }}">設定</a>
+  </nav>
+</header>
+
+<main class="container">
+
+  {% with messages = get_flashed_messages(with_categories=true) %}
+    {% if messages %}
+      <ul class="flash-list">
+        {% for category, message in messages %}
+          <li class="flash flash-{{ category }}">{{ message }}</li>
+        {% endfor %}
+      </ul>
+    {% endif %}
+  {% endwith %}
+
+  <!-- 初回表示用 免責事項・古物営業法上の注意喚起モーダル -->
+  <div id="disclaimer-modal" class="modal-overlay" hidden>
+    <div class="modal-box">
+      <h2>ご利用にあたっての注意事項</h2>
+      <p class="notice-text">{{ disclaimer_text }}</p>
+      <h3>古物営業法について</h3>
+      <p class="notice-text">{{ kobutsu_notice_text }}</p>
+      <button id="disclaimer-agree-btn" type="button" class="btn btn-primary">同意して閉じる</button>
+    </div>
+  </div>
+
+  <section class="card">
+    <h2>バーコードスキャン</h2>
+    <p class="help-text">JAN/EANバーコードを読み取るか、コードを直接入力してください。</p>
+    <div class="scan-controls">
+      <button id="scan-start-btn" type="button" class="btn btn-secondary">📷 バーコードをスキャン</button>
+      <button id="scan-stop-btn" type="button" class="btn btn-secondary" hidden>スキャン停止</button>
+    </div>
+    <div id="scan-video-wrap" hidden>
+      <video id="scan-video" playsinline autoplay muted></video>
+    </div>
+    <p id="scan-status" class="help-text"></p>
+  </section>
+
+  <section class="card">
+    <h2>商品登録・利益計算</h2>
+    <form id="product-form" method="post" action="{{ url_for('product_create') }}" novalidate>
+      <div class="form-group">
+        <label for="jan_code">JANコード（バーコード）</label>
+        <input type="text" inputmode="numeric" id="jan_code" name="jan_code"
+               value="{{ form_values.get('jan_code', '') }}" placeholder="例: 4901234567894">
+        {% if errors.jan_code %}<p class="error-text">{{ errors.jan_code }}</p>{% endif %}
+      </div>
+
+      <div class="form-group">
+        <label for="name">商品名</label>
+        <input type="text" id="name" name="name" value="{{ form_values.get('name', '') }}"
+               placeholder="例: サンプル商品">
+        {% if errors.name %}<p class="error-text">{{ errors.name }}</p>{% endif %}
+      </div>
+
+      <div class="form-group">
+        <label for="purchase_price">仕入れ価格（円）</label>
+        <input type="number" step="1" min="0" id="purchase_price" name="purchase_price"
+               value="{{ form_values.get('purchase_price', '') }}">
+        {% if errors.purchase_price %}<p class="error-text">{{ errors.purchase_price }}</p>{% endif %}
+      </div>
+
+      <div class="form-group">
+        <label for="selling_price">想定売価（円）</label>
+        <input type="number" step="1" min="0" id="selling_price" name="selling_price"
+               value="{{ form_values.get('selling_price', '') }}">
+        {% if errors.selling_price %}<p class="error-text">{{ errors.selling_price }}</p>{% endif %}
+      </div>
+
+      <div class="form-group">
+        <label for="fee_rate">手数料率（%）</label>
+        <input type="number" step="0.1" min="0" max="100" id="fee_rate" name="fee_rate"
+               value="{{ form_values.get('fee_rate', settings.default_fee_rate) }}">
+        {% if errors.fee_rate %}<p class="error-text">{{ errors.fee_rate }}</p>{% endif %}
+      </div>
+
+      <div class="form-group">
+        <label for="shipping_cost">送料（円）</label>
+        <input type="number" step="1" min="0" id="shipping_cost" name="shipping_cost"
+               value="{{ form_values.get('shipping_cost', settings.default_shipping_cost) }}">
+        {% if errors.shipping_cost %}<p class="error-text">{{ errors.shipping_cost }}</p>{% endif %}
+      </div>
+
+      <div class="calc-result card-inset" id="calc-result">
+        <p>利益（見込み）: <span id="calc-profit">-</span> 円</p>
+        <p>利益率（見込み）: <span id="calc-profit-margin">-</span> %</p>
+        <p class="help-text">利益 = 想定売価 ×（1 − 手数料率/100） − 送料 − 仕入れ価格</p>
+      </div>
+
+      <button type="submit" class="btn btn-primary">この内容で登録する</button>
+    </form>
+  </section>
+
+  <section class="card">
+    <h2>ECサイトで価格を調べる</h2>
+    <p class="help-text">
+      入力したJANコードで各ECサイトの検索結果ページを開きます（自動取得は行いません）。
+    </p>
+    <ul class="ec-link-list" id="ec-link-list">
+      {% for link in search_links %}
+      <li>
+        <a href="{{ link.url }}" target="_blank" rel="noopener noreferrer"
+           class="ec-link" data-site-key="{{ link.key }}">{{ link.name }}で検索</a>
+      </li>
+      {% endfor %}
+    </ul>
+  </section>
+
+</main>
+
+<footer class="app-footer">
+  <p class="help-text">{{ disclaimer_text }}</p>
+</footer>
+
+<script>
+  window.EC_SITE_TEMPLATES = {{ ec_sites | tojson }};
+</script>
+<script src="{{ url_for('static', filename='js/scanner.js') }}"></script>
+<script src="{{ url_for('static', filename='js/app.js') }}"></script>
+</body>
+</html>

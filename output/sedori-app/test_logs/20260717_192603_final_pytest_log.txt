@@ -1,0 +1,47 @@
+============================= test session starts =============================
+platform win32 -- Python 3.12.10, pytest-9.1.1, pluggy-1.6.0 -- C:\Users\n\AppData\Local\Programs\Python\Python312\python.exe
+cachedir: .pytest_cache
+rootdir: G:\繝槭う繝峨Λ繧､繝暴ai_dev_council\output\sedori-app
+plugins: anyio-4.14.1
+collecting ... collected 38 items
+
+tests/test_app.py::TestCalculateProfit::test_basic_case PASSED           [  2%]
+tests/test_app.py::TestCalculateProfit::test_zero_fee_and_shipping PASSED [  5%]
+tests/test_app.py::TestCalculateProfit::test_high_fee_rate PASSED        [  7%]
+tests/test_app.py::TestCalculateProfit::test_negative_profit_case PASSED [ 10%]
+tests/test_app.py::TestCalculateProfit::test_hundred_percent_fee_rate PASSED [ 13%]
+tests/test_app.py::TestCalculateProfit::test_decimal_values PASSED       [ 15%]
+tests/test_app.py::TestProductFlow::test_index_page_loads PASSED         [ 18%]
+tests/test_app.py::TestProductFlow::test_create_product_success_redirects_to_list PASSED [ 21%]
+tests/test_app.py::TestProductFlow::test_created_product_appears_in_list PASSED [ 23%]
+tests/test_app.py::TestProductFlow::test_created_product_has_correct_profit_stored PASSED [ 26%]
+tests/test_app.py::TestProductFlow::test_delete_product_removes_it_from_list PASSED [ 28%]
+tests/test_app.py::TestProductFlow::test_empty_list_shows_message PASSED [ 31%]
+tests/test_app.py::TestValidationErrors::test_negative_purchase_price_rejected PASSED [ 34%]
+tests/test_app.py::TestValidationErrors::test_negative_shipping_cost_rejected PASSED [ 36%]
+tests/test_app.py::TestValidationErrors::test_zero_or_negative_selling_price_rejected PASSED [ 39%]
+tests/test_app.py::TestValidationErrors::test_empty_name_rejected PASSED [ 42%]
+tests/test_app.py::TestValidationErrors::test_empty_jan_code_rejected PASSED [ 44%]
+tests/test_app.py::TestValidationErrors::test_non_numeric_jan_code_rejected PASSED [ 47%]
+tests/test_app.py::TestValidationErrors::test_wrong_length_jan_code_rejected PASSED [ 50%]
+tests/test_app.py::TestValidationErrors::test_fee_rate_over_100_rejected PASSED [ 52%]
+tests/test_app.py::TestValidationErrors::test_fee_rate_negative_rejected PASSED [ 55%]
+tests/test_app.py::TestValidationErrors::test_non_numeric_price_rejected PASSED [ 57%]
+tests/test_app.py::TestValidationErrors::test_valid_boundary_jan_8_digits_accepted PASSED [ 60%]
+tests/test_app.py::TestValidationErrors::test_valid_boundary_jan_13_digits_accepted PASSED [ 63%]
+tests/test_app.py::TestValidationErrors::test_api_calculate_rejects_negative_values PASSED [ 65%]
+tests/test_app.py::TestValidationErrors::test_api_calculate_valid_returns_profit PASSED [ 68%]
+tests/test_app.py::TestSettingsReflection::test_settings_page_loads PASSED [ 71%]
+tests/test_app.py::TestSettingsReflection::test_settings_update_changes_index_defaults PASSED [ 73%]
+tests/test_app.py::TestSettingsReflection::test_settings_reflected_on_settings_page PASSED [ 76%]
+tests/test_app.py::TestSettingsReflection::test_settings_negative_fee_rate_rejected PASSED [ 78%]
+tests/test_app.py::TestSettingsReflection::test_settings_fee_rate_over_100_rejected PASSED [ 81%]
+tests/test_app.py::TestSettingsReflection::test_settings_negative_shipping_cost_rejected PASSED [ 84%]
+tests/test_app.py::TestSettingsReflection::test_disclaimer_and_kobutsu_notice_shown_on_settings PASSED [ 86%]
+tests/test_app.py::TestSettingsReflection::test_disclaimer_shown_on_index PASSED [ 89%]
+tests/test_app.py::TestEcSearchLinks::test_manual_price_source_never_fetches_price PASSED [ 92%]
+tests/test_app.py::TestEcSearchLinks::test_search_links_format PASSED    [ 94%]
+tests/test_app.py::TestEcSearchLinks::test_index_page_contains_ec_search_links PASSED [ 97%]
+tests/test_app.py::TestEcSearchLinks::test_no_scraping_module_imported PASSED [100%]
+
+============================= 38 passed in 0.90s ==============================

@@ -1,0 +1,382 @@
+"""pytestによる自動テスト。
+
+カバー範囲:
+1. 利益計算式（正常系・手数料率/送料パターン）
+2. 商品登録 -> 一覧 -> 削除の一連の流れ
+3. 異常値（負の値・空欄・不正JANコード等）でエラーとなり保存されないこと
+4. 設定画面での変更が登録画面の初期値に反映されること
+5. ECサイトへの検索リンクが要件通りの形式であり、自動取得（スクレイピング）を
+   行っていないこと
+"""
+
+import os
+import sys
+
+import pytest
+
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
+
+import app as app_module  # noqa: E402
+from adapters.price_source import ManualInputPriceSource  # noqa: E402
+
+
+# ---------------------------------------------------------------------------
+# フィクスチャ
+# ---------------------------------------------------------------------------
+
+@pytest.fixture()
+def client(tmp_path):
+    db_path = tmp_path / "test_sedori.db"
+    app_module.app.config["DATABASE_PATH"] = str(db_path)
+    app_module.app.config["TESTING"] = True
+    app_module.init_db(str(db_path))
+
+    with app_module.app.test_client() as test_client:
+        yield test_client
+
+
+def create_product(client, **overrides):
+    payload = {
+        "jan_code": "4901234567894",
+        "name": "テスト商品",
+        "purchase_price": "1000",
+        "selling_price": "2000",
+        "fee_rate": "10",
+        "shipping_cost": "100",
+    }
+    payload.update(overrides)
+    return client.post("/products", data=payload, follow_redirects=False)
+
+
+# ---------------------------------------------------------------------------
+# 1. 利益計算式のテスト
+# ---------------------------------------------------------------------------
+
+class TestCalculateProfit:
+    def test_basic_case(self):
+        # 利益 = 2000 * (1 - 10/100) - 100 - 1000 = 1800 - 100 - 1000 = 700
+        profit, margin = app_module.calculate_profit(
+            selling_price=2000, fee_rate=10, shipping_cost=100, purchase_price=1000
+        )
+        assert profit == pytest.approx(700.0)
+        assert margin == pytest.approx(700.0 / 2000 * 100)
+
+    def test_zero_fee_and_shipping(self):
+        profit, margin = app_module.calculate_profit(
+            selling_price=1500, fee_rate=0, shipping_cost=0, purchase_price=500
+        )
+        assert profit == pytest.approx(1000.0)
+        assert margin == pytest.approx(1000.0 / 1500 * 100)
+
+    def test_high_fee_rate(self):
+        profit, margin = app_module.calculate_profit(
+            selling_price=3000, fee_rate=50, shipping_cost=200, purchase_price=800
+        )
+        # 3000 * 0.5 - 200 - 800 = 1500 - 200 - 800 = 500
+        assert profit == pytest.approx(500.0)
+        assert margin == pytest.approx(500.0 / 3000 * 100)
+
+    def test_negative_profit_case(self):
+        # 仕入れ・送料・手数料が高く赤字になるケースも正しく計算できること
+        profit, margin = app_module.calculate_profit(
+            selling_price=1000, fee_rate=20, shipping_cost=300, purchase_price=900
+        )
+        # 1000*0.8 - 300 - 900 = 800 - 300 - 900 = -400
+        assert profit == pytest.approx(-400.0)
+        assert margin == pytest.approx(-400.0 / 1000 * 100)
+
+    def test_hundred_percent_fee_rate(self):
+        profit, margin = app_module.calculate_profit(
+            selling_price=1000, fee_rate=100, shipping_cost=0, purchase_price=100
+        )
+        # 1000*0 - 0 - 100 = -100
+        assert profit == pytest.approx(-100.0)
+        assert margin == pytest.approx(-10.0)
+
+    def test_decimal_values(self):
+        profit, margin = app_module.calculate_profit(
+            selling_price=1980.5, fee_rate=12.5, shipping_cost=150.25, purchase_price=999.75
+        )
+        expected_profit = 1980.5 * (1 - 12.5 / 100) - 150.25 - 999.75
+        assert profit == pytest.approx(expected_profit)
+        assert margin == pytest.approx(expected_profit / 1980.5 * 100)
+
+
+# ---------------------------------------------------------------------------
+# 2. 商品登録 -> 一覧 -> 削除の流れ
+# ---------------------------------------------------------------------------
+
+class TestProductFlow:
+    def test_index_page_loads(self, client):
+        res = client.get("/")
+        assert res.status_code == 200
+        assert "商品登録".encode("utf-8") in res.data or "商品登録・利益計算".encode("utf-8") in res.data
+
+    def test_create_product_success_redirects_to_list(self, client):
+        res = create_product(client)
+        assert res.status_code == 302
+        assert res.headers["Location"].endswith("/products")
+
+    def test_created_product_appears_in_list(self, client):
+        create_product(client, name="ユニークテスト商品", jan_code="4912345678904")
+        res = client.get("/products")
+        assert res.status_code == 200
+        assert "ユニークテスト商品".encode("utf-8") in res.data
+        assert b"4912345678904" in res.data
+
+    def test_created_product_has_correct_profit_stored(self, client):
+        create_product(
+            client,
+            purchase_price="1000",
+            selling_price="2000",
+            fee_rate="10",
+            shipping_cost="100",
+        )
+        with app_module.app.app_context():
+            conn = app_module.get_db()
+            row = conn.execute("SELECT * FROM products").fetchone()
+        assert row is not None
+        assert row["profit"] == pytest.approx(700.0)
+        assert row["profit_margin"] == pytest.approx(35.0)
+
+    def test_delete_product_removes_it_from_list(self, client):
+        create_product(client, name="削除対象商品", jan_code="4900000000000")
+        with app_module.app.app_context():
+            conn = app_module.get_db()
+            row = conn.execute(
+                "SELECT id FROM products WHERE name = ?", ("削除対象商品",)
+            ).fetchone()
+        product_id = row["id"]
+
+        res = client.post(f"/products/{product_id}/delete", follow_redirects=False)
+        assert res.status_code == 302
+
+        list_res = client.get("/products")
+        assert "削除対象商品".encode("utf-8") not in list_res.data
+
+    def test_empty_list_shows_message(self, client):
+        res = client.get("/products")
+        assert "まだ登録された商品がありません".encode("utf-8") in res.data
+
+
+# ---------------------------------------------------------------------------
+# 3. 異常系（負の値・空欄・不正JAN等）のテスト
+# ---------------------------------------------------------------------------
+
+class TestValidationErrors:
+    def _count_products(self):
+        with app_module.app.app_context():
+            conn = app_module.get_db()
+            return conn.execute("SELECT COUNT(*) AS c FROM products").fetchone()["c"]
+
+    def test_negative_purchase_price_rejected(self, client):
+        res = create_product(client, purchase_price="-500")
+        assert res.status_code == 400
+        assert self._count_products() == 0
+        assert "負の値".encode("utf-8") in res.data or "エラー".encode("utf-8") in res.data
+
+    def test_negative_shipping_cost_rejected(self, client):
+        res = create_product(client, shipping_cost="-10")
+        assert res.status_code == 400
+        assert self._count_products() == 0
+
+    def test_zero_or_negative_selling_price_rejected(self, client):
+        res = create_product(client, selling_price="0")
+        assert res.status_code == 400
+        assert self._count_products() == 0
+
+    def test_empty_name_rejected(self, client):
+        res = create_product(client, name="")
+        assert res.status_code == 400
+        assert self._count_products() == 0
+
+    def test_empty_jan_code_rejected(self, client):
+        res = create_product(client, jan_code="")
+        assert res.status_code == 400
+        assert self._count_products() == 0
+
+    def test_non_numeric_jan_code_rejected(self, client):
+        res = create_product(client, jan_code="ABCDEFGHIJKLM")
+        assert res.status_code == 400
+        assert self._count_products() == 0
+
+    def test_wrong_length_jan_code_rejected(self, client):
+        res = create_product(client, jan_code="12345")
+        assert res.status_code == 400
+        assert self._count_products() == 0
+
+    def test_fee_rate_over_100_rejected(self, client):
+        res = create_product(client, fee_rate="150")
+        assert res.status_code == 400
+        assert self._count_products() == 0
+
+    def test_fee_rate_negative_rejected(self, client):
+        res = create_product(client, fee_rate="-5")
+        assert res.status_code == 400
+        assert self._count_products() == 0
+
+    def test_non_numeric_price_rejected(self, client):
+        res = create_product(client, purchase_price="abc")
+        assert res.status_code == 400
+        assert self._count_products() == 0
+
+    def test_valid_boundary_jan_8_digits_accepted(self, client):
+        res = create_product(client, jan_code="12345678")
+        assert res.status_code == 302
+        assert self._count_products() == 1
+
+    def test_valid_boundary_jan_13_digits_accepted(self, client):
+        res = create_product(client, jan_code="1234567890123")
+        assert res.status_code == 302
+        assert self._count_products() == 1
+
+    def test_api_calculate_rejects_negative_values(self, client):
+        res = client.post(
+            "/api/calculate",
+            json={
+                "purchase_price": "-1",
+                "selling_price": "1000",
+                "fee_rate": "10",
+                "shipping_cost": "0",
+            },
+        )
+        assert res.status_code == 400
+        data = res.get_json()
+        assert data["ok"] is False
+        assert "purchase_price" in data["errors"]
+
+    def test_api_calculate_valid_returns_profit(self, client):
+        res = client.post(
+            "/api/calculate",
+            json={
+                "purchase_price": "1000",
+                "selling_price": "2000",
+                "fee_rate": "10",
+                "shipping_cost": "100",
+            },
+        )
+        assert res.status_code == 200
+        data = res.get_json()
+        assert data["ok"] is True
+        assert data["profit"] == pytest.approx(700.0)
+        assert data["profit_margin"] == pytest.approx(35.0)
+
+
+# ---------------------------------------------------------------------------
+# 4. 設定画面変更 -> 登録画面の初期値への反映
+# ---------------------------------------------------------------------------
+
+class TestSettingsReflection:
+    def test_settings_page_loads(self, client):
+        res = client.get("/settings")
+        assert res.status_code == 200
+        assert "デフォルト手数料率".encode("utf-8") in res.data
+
+    def test_settings_update_changes_index_defaults(self, client):
+        res = client.post(
+            "/settings",
+            data={
+                "default_fee_rate": "15.5",
+                "default_shipping_cost": "300",
+                "kobutsu_license_number": "東京都公安委員会 第123456789012号",
+            },
+            follow_redirects=False,
+        )
+        assert res.status_code == 302
+
+        index_res = client.get("/")
+        assert b'value="15.5"' in index_res.data
+        assert b'value="300.0"' in index_res.data or b'value="300"' in index_res.data
+
+    def test_settings_reflected_on_settings_page(self, client):
+        client.post(
+            "/settings",
+            data={
+                "default_fee_rate": "8",
+                "default_shipping_cost": "50",
+                "kobutsu_license_number": "",
+            },
+        )
+        res = client.get("/settings")
+        assert b'value="8.0"' in res.data
+
+    def test_settings_negative_fee_rate_rejected(self, client):
+        res = client.post(
+            "/settings",
+            data={
+                "default_fee_rate": "-1",
+                "default_shipping_cost": "0",
+                "kobutsu_license_number": "",
+            },
+        )
+        assert res.status_code == 400
+
+    def test_settings_fee_rate_over_100_rejected(self, client):
+        res = client.post(
+            "/settings",
+            data={
+                "default_fee_rate": "200",
+                "default_shipping_cost": "0",
+                "kobutsu_license_number": "",
+            },
+        )
+        assert res.status_code == 400
+
+    def test_settings_negative_shipping_cost_rejected(self, client):
+        res = client.post(
+            "/settings",
+            data={
+                "default_fee_rate": "10",
+                "default_shipping_cost": "-1",
+                "kobutsu_license_number": "",
+            },
+        )
+        assert res.status_code == 400
+
+    def test_disclaimer_and_kobutsu_notice_shown_on_settings(self, client):
+        res = client.get("/settings")
+        assert "免責事項".encode("utf-8") in res.data
+        assert "古物営業法".encode("utf-8") in res.data
+
+    def test_disclaimer_shown_on_index(self, client):
+        res = client.get("/")
+        assert "古物営業法".encode("utf-8") in res.data
+
+
+# ---------------------------------------------------------------------------
+# 5. ECサイト検索リンクのテスト（自動取得を行っていないことの確認含む）
+# ---------------------------------------------------------------------------
+
+class TestEcSearchLinks:
+    def test_manual_price_source_never_fetches_price(self):
+        source = ManualInputPriceSource()
+        # 自動価格取得は一切行わず、常に None（未対応）を返すこと
+        assert source.fetch_price("4901234567894") is None
+
+    def test_search_links_format(self):
+        source = ManualInputPriceSource()
+        links = source.get_search_links("4901234567894")
+        by_key = {link["key"]: link["url"] for link in links}
+
+        assert by_key["amazon"] == "https://www.amazon.co.jp/s?k=4901234567894"
+        assert by_key["mercari"] == "https://jp.mercari.com/search?keyword=4901234567894"
+        assert by_key["yahoo"] == "https://shopping.yahoo.co.jp/search?p=4901234567894"
+        assert by_key["rakuten"] == "https://search.rakuten.co.jp/search/mall/4901234567894/"
+
+    def test_index_page_contains_ec_search_links(self, client):
+        res = client.get("/")
+        assert b"amazon.co.jp/s?k=" in res.data
+        assert b"jp.mercari.com/search" in res.data
+        assert b"shopping.yahoo.co.jp/search" in res.data
+        assert b"search.rakuten.co.jp/search/mall" in res.data
+
+    def test_no_scraping_module_imported(self):
+        # requests/BeautifulSoup等のスクレイピング用ライブラリに依存していないこと
+        # （MVPでは検索リンク提示のみで、自動取得・スクレイピングを行わない）
+        import app as app_mod
+        import adapters.price_source as price_source_mod
+
+        forbidden_modules = ("requests", "bs4", "selenium", "scrapy")
+        for mod in forbidden_modules:
+            assert mod not in dir(app_mod)
+            assert mod not in dir(price_source_mod)

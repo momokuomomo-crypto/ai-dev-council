@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>せどり仕入れ判断支援 - 登録商品一覧</title>
+<link rel="manifest" href="{{ url_for('static', filename='manifest.json') }}">
+<meta name="theme-color" content="#1f6feb">
+<link rel="apple-touch-icon" href="{{ url_for('static', filename='icons/icon-192.svg') }}">
+<link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body>
+<header class="app-header">
+  <h1>せどり仕入れ判断支援</h1>
+  <nav class="app-nav">
+    <a href="{{ url_for('index') }}">ホーム</a>
+    <a href="{{ url_for('product_list') }}" class="active">一覧</a>
+    <a href="{{ url_for('settings_view') }}">設定</a>
+  </nav>
+</header>
+
+<main class="container">
+  {% with messages = get_flashed_messages(with_categories=true) %}
+    {% if messages %}
+      <ul class="flash-list">
+        {% for category, message in messages %}
+          <li class="flash flash-{{ category }}">{{ message }}</li>
+        {% endfor %}
+      </ul>
+    {% endif %}
+  {% endwith %}
+
+  <section class="card">
+    <h2>登録商品一覧</h2>
+    <p class="help-text">オフライン時は最後に表示した内容がキャッシュから表示されます。</p>
+
+    {% if products|length == 0 %}
+      <p class="help-text">まだ登録された商品がありません。</p>
+    {% else %}
+      <div class="product-list">
+        {% for p in products %}
+        <article class="product-card" data-product-id="{{ p['id'] }}">
+          <h3>{{ p['name'] }}</h3>
+          <p class="jan">JAN: {{ p['jan_code'] }}</p>
+          <table class="product-table">
+            <tr><th>仕入れ価格</th><td>{{ '%.2f'|format(p['purchase_price']) }} 円</td></tr>
+            <tr><th>想定売価</th><td>{{ '%.2f'|format(p['selling_price']) }} 円</td></tr>
+            <tr><th>手数料率</th><td>{{ '%.2f'|format(p['fee_rate']) }} %</td></tr>
+            <tr><th>送料</th><td>{{ '%.2f'|format(p['shipping_cost']) }} 円</td></tr>
+            <tr>
+              <th>利益</th>
+              <td class="{{ 'profit-positive' if p['profit'] >= 0 else 'profit-negative' }}">
+                {{ '%.2f'|format(p['profit']) }} 円
+              </td>
+            </tr>
+            <tr>
+              <th>利益率</th>
+              <td class="{{ 'profit-positive' if p['profit_margin'] >= 0 else 'profit-negative' }}">
+                {{ '%.2f'|format(p['profit_margin']) }} %
+              </td>
+            </tr>
+            <tr><th>登録日時</th><td>{{ p['created_at'] }}</td></tr>
+          </table>
+          <form method="post" action="{{ url_for('product_delete', product_id=p['id']) }}"
+                class="delete-form" onsubmit="return confirm('この商品を削除しますか？');">
+            <button type="submit" class="btn btn-danger">削除</button>
+          </form>
+        </article>
+        {% endfor %}
+      </div>
+    {% endif %}
+  </section>
+</main>
+
+<script>
+  if ('serviceWorker' in navigator) {
+    navigator.serviceWorker.register("{{ url_for('static', filename='sw.js') }}");
+  }
+</script>
+</body>
+</html>

@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>せどり仕入れ判断支援 - 設定</title>
+<link rel="manifest" href="{{ url_for('static', filename='manifest.json') }}">
+<meta name="theme-color" content="#1f6feb">
+<link rel="apple-touch-icon" href="{{ url_for('static', filename='icons/icon-192.svg') }}">
+<link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body>
+<header class="app-header">
+  <h1>せどり仕入れ判断支援</h1>
+  <nav class="app-nav">
+    <a href="{{ url_for('index') }}">ホーム</a>
+    <a href="{{ url_for('product_list') }}">一覧</a>
+    <a href="{{ url_for('settings_view') }}" class="active">設定</a>
+  </nav>
+</header>
+
+<main class="container">
+  {% with messages = get_flashed_messages(with_categories=true) %}
+    {% if messages %}
+      <ul class="flash-list">
+        {% for category, message in messages %}
+          <li class="flash flash-{{ category }}">{{ message }}</li>
+        {% endfor %}
+      </ul>
+    {% endif %}
+  {% endwith %}
+
+  <section class="card">
+    <h2>デフォルト設定</h2>
+    <form method="post" action="{{ url_for('settings_update') }}" novalidate>
+      <div class="form-group">
+        <label for="default_fee_rate">デフォルト手数料率（%）</label>
+        <input type="number" step="0.1" min="0" max="100" id="default_fee_rate"
+               name="default_fee_rate" value="{{ settings.default_fee_rate }}">
+        {% if errors.default_fee_rate %}<p class="error-text">{{ errors.default_fee_rate }}</p>{% endif %}
+      </div>
+
+      <div class="form-group">
+        <label for="default_shipping_cost">デフォルト送料（円）</label>
+        <input type="number" step="1" min="0" id="default_shipping_cost"
+               name="default_shipping_cost" value="{{ settings.default_shipping_cost }}">
+        {% if errors.default_shipping_cost %}<p class="error-text">{{ errors.default_shipping_cost }}</p>{% endif %}
+      </div>
+
+      <div class="form-group">
+        <label for="kobutsu_license_number">古物商許可番号（任意）</label>
+        <input type="text" id="kobutsu_license_number" name="kobutsu_license_number"
+               value="{{ settings.kobutsu_license_number }}" placeholder="例: 東京都公安委員会 第000000000000号">
+        {% if errors.kobutsu_license_number %}<p class="error-text">{{ errors.kobutsu_license_number }}</p>{% endif %}
+      </div>
+
+      <button type="submit" class="btn btn-primary">設定を保存する</button>
+    </form>
+  </section>
+
+  <section class="card notice-card">
+    <h2>免責事項</h2>
+    <p class="notice-text">{{ disclaimer_text }}</p>
+    <h2>古物営業法についての注意喚起</h2>
+    <p class="notice-text">{{ kobutsu_notice_text }}</p>
+  </section>
+</main>
+
+<script>
+  if ('serviceWorker' in navigator) {
+    navigator.serviceWorker.register("{{ url_for('static', filename='sw.js') }}");
+  }
+</script>
+</body>
+</html>
