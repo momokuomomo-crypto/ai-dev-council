@@ -380,3 +380,116 @@ class TestEcSearchLinks:
         for mod in forbidden_modules:
             assert mod not in dir(app_mod)
             assert mod not in dir(price_source_mod)
+
+
+# ---------------------------------------------------------------------------
+# 6. 写真からの商品判別API（/api/identify）のテスト（実APIは呼ばない）
+# ---------------------------------------------------------------------------
+
+import io
+from unittest import mock
+
+from adapters import product_identifier as pid_module
+
+
+class _FakeIdentifier(pid_module.ProductIdentifier):
+    def __init__(self, candidates=None, available=True, error=None):
+        self._candidates = candidates or []
+        self._available = available
+        self._error = error
+
+    def is_available(self):
+        return self._available
+
+    def identify(self, image_bytes, media_type):
+        if self._error:
+            raise self._error
+        return self._candidates
+
+
+def _photo(data=b"\x89PNG fake image bytes", name="item.png", mimetype="image/png"):
+    return {"photo": (io.BytesIO(data), name, mimetype)}
+
+
+class TestApiIdentify:
+    def test_returns_candidates_from_identifier(self, client):
+        fake = _FakeIdentifier(
+            candidates=[
+                {"name": "サンプルおもちゃ レッド", "note": "メーカーA"},
+                {"name": "サンプルおもちゃ", "note": ""},
+            ]
+        )
+        with mock.patch.object(app_module, "get_product_identifier", return_value=fake):
+            res = client.post(
+                "/api/identify", data=_photo(), content_type="multipart/form-data"
+            )
+        assert res.status_code == 200
+        data = res.get_json()
+        assert data["ok"] is True
+        assert len(data["candidates"]) == 2
+        assert data["candidates"][0]["name"] == "サンプルおもちゃ レッド"
+
+    def test_returns_503_when_api_key_missing(self, client):
+        fake = _FakeIdentifier(available=False)
+        with mock.patch.object(app_module, "get_product_identifier", return_value=fake):
+            res = client.post(
+                "/api/identify", data=_photo(), content_type="multipart/form-data"
+            )
+        assert res.status_code == 503
+        assert res.get_json()["ok"] is False
+
+    def test_returns_400_when_no_photo(self, client):
+        fake = _FakeIdentifier()
+        with mock.patch.object(app_module, "get_product_identifier", return_value=fake):
+            res = client.post("/api/identify", data={}, content_type="multipart/form-data")
+        assert res.status_code == 400
+
+    def test_returns_400_for_unsupported_media_type(self, client):
+        fake = _FakeIdentifier()
+        with mock.patch.object(app_module, "get_product_identifier", return_value=fake):
+            res = client.post(
+                "/api/identify",
+                data=_photo(name="doc.pdf", mimetype="application/pdf"),
+                content_type="multipart/form-data",
+            )
+        assert res.status_code == 400
+
+    def test_returns_502_when_identify_fails(self, client):
+        fake = _FakeIdentifier(error=RuntimeError("API error"))
+        with mock.patch.object(app_module, "get_product_identifier", return_value=fake):
+            res = client.post(
+                "/api/identify", data=_photo(), content_type="multipart/form-data"
+            )
+        assert res.status_code == 502
+
+
+class TestParseCandidates:
+    def test_parses_plain_json_array(self):
+        text = '[{"name": "商品A", "note": "型番X"}, {"name": "商品B"}]'
+        result = pid_module._parse_candidates(text)
+        assert result == [
+            {"name": "商品A", "note": "型番X"},
+            {"name": "商品B", "note": ""},
+        ]
+
+    def test_extracts_json_from_surrounding_text(self):
+        text = '以下が候補です。\n[{"name": "商品A", "note": ""}]\n以上です。'
+        result = pid_module._parse_candidates(text)
+        assert len(result) == 1
+        assert result[0]["name"] == "商品A"
+
+    def test_caps_at_three_candidates(self):
+        text = (
+            '[{"name": "A"}, {"name": "B"}, {"name": "C"}, {"name": "D"}]'
+        )
+        assert len(pid_module._parse_candidates(text)) == 3
+
+    def test_returns_empty_for_garbage(self):
+        assert pid_module._parse_candidates("判別できませんでした") == []
+        assert pid_module._parse_candidates("") == []
+
+    def test_default_identifier_disabled_without_api_key(self, monkeypatch):
+        monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+        identifier = pid_module.get_product_identifier()
+        assert isinstance(identifier, pid_module.DisabledIdentifier)
+        assert identifier.is_available() is False

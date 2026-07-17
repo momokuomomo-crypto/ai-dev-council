@@ -35,6 +35,18 @@ EC_SEARCH_SITES = [
     {"key": "rakuten", "name": "楽天市場", "url_template": "https://search.rakuten.co.jp/search/mall/{jan}/"},
 ]
 
+# 写真からの商品判別（補助機能）の設定。
+# 判別1回ごとにClaude APIの利用料金が発生する。ANTHROPIC_API_KEYが
+# 未設定の環境では機能自体が無効になる（アプリ本体は動作する）。
+IDENTIFY_MODEL = "claude-opus-4-8"
+IDENTIFY_MAX_IMAGE_BYTES = 5 * 1024 * 1024  # 5MB
+IDENTIFY_ALLOWED_MEDIA_TYPES = {
+    "image/jpeg",
+    "image/png",
+    "image/webp",
+    "image/gif",
+}
+
 # 免責事項・古物営業法上の注意喚起文（初回表示・設定画面で必須表示）
 DISCLAIMER_TEXT = (
     "本アプリは仕入れ判断を支援するための計算補助ツールであり、"

@@ -56,6 +56,21 @@
   </section>
 
   <section class="card">
+    <h2>写真から商品を判別（AI）</h2>
+    <p class="help-text">
+      バーコードが無い商品は、写真からAIが商品名の候補を提案します。
+      候補をタップすると商品名欄に入力されます。
+      ※判別1回ごとにAPI利用料（数円程度）がかかります。
+    </p>
+    <div class="scan-controls">
+      <input type="file" id="photo-input" accept="image/*" capture="environment" hidden>
+      <button id="photo-identify-btn" type="button" class="btn btn-secondary">📸 写真で判別</button>
+    </div>
+    <p id="identify-status" class="help-text"></p>
+    <ul class="ec-link-list" id="identify-candidates"></ul>
+  </section>
+
+  <section class="card">
     <h2>商品登録・利益計算</h2>
     <form id="product-form" method="post" action="{{ url_for('product_create') }}" novalidate>
       <div class="form-group">

@@ -8,8 +8,18 @@ from datetime import datetime, timezone
 
 from flask import Flask, flash, g, jsonify, redirect, render_template, request, url_for
 
+try:
+    # 画像判別機能用のANTHROPIC_API_KEYを.envから読み込む（任意）。
+    # python-dotenv未導入・.envなしでもアプリ本体は動作する。
+    from dotenv import load_dotenv
+
+    load_dotenv()
+except ImportError:
+    pass
+
 import config
 from adapters.price_source import get_price_source
+from adapters.product_identifier import get_product_identifier
 
 app = Flask(__name__)
 app.config["SECRET_KEY"] = config.SECRET_KEY
@@ -402,6 +412,55 @@ def api_calculate():
             "profit_margin": round(profit_margin, 2),
         }
     )
+
+
+@app.route("/api/identify", methods=["POST"])
+def api_identify():
+    """写真からの商品判別API（補助機能）。
+
+    multipart/form-data の `photo` フィールドで画像を受け取り、
+    商品名候補（最大3件）をJSONで返す。判別1回ごとにClaude APIの
+    課金が発生する。ANTHROPIC_API_KEY未設定の環境では503を返す
+    （アプリ本体の機能には影響しない）。
+    """
+    identifier = get_product_identifier()
+    if not identifier.is_available():
+        return (
+            jsonify(
+                {
+                    "ok": False,
+                    "error": "画像判別機能は未設定です（サーバーにANTHROPIC_API_KEYの設定が必要）。",
+                }
+            ),
+            503,
+        )
+
+    photo = request.files.get("photo")
+    if photo is None or photo.filename == "":
+        return jsonify({"ok": False, "error": "写真が選択されていません。"}), 400
+
+    media_type = photo.mimetype
+    if media_type not in config.IDENTIFY_ALLOWED_MEDIA_TYPES:
+        return (
+            jsonify({"ok": False, "error": "対応していない画像形式です（jpg/png/webp/gif）。"}),
+            400,
+        )
+
+    image_bytes = photo.read(config.IDENTIFY_MAX_IMAGE_BYTES + 1)
+    if len(image_bytes) > config.IDENTIFY_MAX_IMAGE_BYTES:
+        return jsonify({"ok": False, "error": "画像サイズが大きすぎます（5MBまで）。"}), 400
+    if not image_bytes:
+        return jsonify({"ok": False, "error": "画像が空です。"}), 400
+
+    try:
+        candidates = identifier.identify(image_bytes, media_type)
+    except Exception:
+        return (
+            jsonify({"ok": False, "error": "判別に失敗しました。時間をおいて再度お試しください。"}),
+            502,
+        )
+
+    return jsonify({"ok": True, "candidates": candidates})
 
 
 if __name__ == "__main__":

@@ -171,6 +171,74 @@
     });
   }
 
+  function initPhotoIdentify() {
+    var btn = document.getElementById("photo-identify-btn");
+    var input = document.getElementById("photo-input");
+    var status = document.getElementById("identify-status");
+    var list = document.getElementById("identify-candidates");
+    var nameInput = document.getElementById("name");
+    if (!btn || !input || !status || !list || !nameInput) {
+      return;
+    }
+
+    btn.addEventListener("click", function () {
+      input.click();
+    });
+
+    input.addEventListener("change", function () {
+      if (!input.files || input.files.length === 0) {
+        return;
+      }
+      var file = input.files[0];
+      var formData = new FormData();
+      formData.append("photo", file);
+
+      status.textContent = "AIが商品を判別しています...";
+      list.innerHTML = "";
+      btn.disabled = true;
+
+      fetch("/api/identify", { method: "POST", body: formData })
+        .then(function (res) {
+          return res.json();
+        })
+        .then(function (data) {
+          btn.disabled = false;
+          input.value = "";
+          if (!data.ok) {
+            status.textContent = data.error || "判別に失敗しました。";
+            return;
+          }
+          if (!data.candidates || data.candidates.length === 0) {
+            status.textContent =
+              "商品を特定できませんでした。別の角度から撮影するか、商品名を直接入力してください。";
+            return;
+          }
+          status.textContent = "候補をタップすると商品名欄に入力されます。";
+          data.candidates.forEach(function (candidate) {
+            var li = document.createElement("li");
+            var a = document.createElement("a");
+            a.href = "#";
+            a.className = "ec-link";
+            a.textContent =
+              candidate.name + (candidate.note ? "（" + candidate.note + "）" : "");
+            a.addEventListener("click", function (e) {
+              e.preventDefault();
+              nameInput.value = candidate.name;
+              nameInput.dispatchEvent(new Event("input"));
+              status.textContent = "商品名欄に入力しました: " + candidate.name;
+            });
+            li.appendChild(a);
+            list.appendChild(li);
+          });
+        })
+        .catch(function () {
+          btn.disabled = false;
+          input.value = "";
+          status.textContent = "通信エラーが発生しました。";
+        });
+    });
+  }
+
   function initServiceWorker() {
     if ("serviceWorker" in navigator) {
       navigator.serviceWorker.register("/static/sw.js").catch(function () {
@@ -184,6 +252,7 @@
     initCalculator();
     initEcLinks();
     initScanner();
+    initPhotoIdentify();
     initServiceWorker();
   });
 })();
