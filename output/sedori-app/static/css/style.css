@@ -231,6 +231,13 @@ html, body {
   z-index: 100;
 }
 
+/* display: flex がUAスタイルシートの [hidden] { display: none } を
+   上書きしてしまい、hidden属性を付けてもモーダルが消えないバグの修正。
+   author側で明示的に [hidden] 時の非表示を宣言する。 */
+.modal-overlay[hidden] {
+  display: none;
+}
+
 .modal-box {
   background: #fff;
   border-radius: var(--radius);

@@ -10,7 +10,7 @@
  *   ネットワークエラーとなる（オフラインでの新規登録・削除は非対応。閲覧のみサポート）。
  */
 
-var CACHE_NAME = "sedori-cache-v1";
+var CACHE_NAME = "sedori-cache-v2";
 
 var PRECACHE_URLS = [
   "/",
