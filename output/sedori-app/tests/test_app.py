@@ -493,3 +493,306 @@ class TestParseCandidates:
         identifier = pid_module.get_product_identifier()
         assert isinstance(identifier, pid_module.DisabledIdentifier)
         assert identifier.is_available() is False
+
+
+# ---------------------------------------------------------------------------
+# 7. 横断価格比較機能（楽天市場API・Yahoo!ショッピングAPI）
+#
+# 楽天市場APIはサーバーサイド（Flask、adapters/price_source.pyの楽天
+# アダプター）で取得する構成。Yahoo!ショッピングAPIはPythonAnywhere無料
+# プランのホワイトリストに含まれないためブラウザ側から直接呼び出す構成と
+# なっており、サーバー側のテスト対象外（/api/pricesは楽天のみを扱う）。
+# 実APIは一切呼ばず、アダプターをモックする。
+# ---------------------------------------------------------------------------
+
+import adapters.price_source as price_source_mod  # noqa: E402
+
+
+class _FakeComparisonSource(price_source_mod.PriceSource):
+    def __init__(self, prices=None, available=True, error=None):
+        self._prices = prices or []
+        self._available = available
+        self._error = error
+
+    def is_available(self):
+        return self._available
+
+    def fetch_price(self, jan_code):
+        return self._prices[0] if self._prices else None
+
+    def get_search_links(self, jan_code):
+        return []
+
+    def fetch_prices(self, jan_code):
+        if self._error:
+            raise self._error
+        return self._prices
+
+
+class TestSummarizePrices:
+    def test_empty_list_returns_none(self):
+        summary = price_source_mod.summarize_prices([])
+        assert summary == {"lowest": None, "median": None, "count": 0}
+
+    def test_odd_count_median_is_middle_value(self):
+        prices = [
+            price_source_mod.PriceInfo(price=300, source_name="楽天市場"),
+            price_source_mod.PriceInfo(price=100, source_name="楽天市場"),
+            price_source_mod.PriceInfo(price=200, source_name="楽天市場"),
+        ]
+        summary = price_source_mod.summarize_prices(prices)
+        assert summary["lowest"] == 100
+        assert summary["median"] == 200
+        assert summary["count"] == 3
+
+    def test_even_count_median_is_average_of_middle_two(self):
+        prices = [
+            price_source_mod.PriceInfo(price=400, source_name="楽天市場"),
+            price_source_mod.PriceInfo(price=100, source_name="楽天市場"),
+            price_source_mod.PriceInfo(price=200, source_name="楽天市場"),
+            price_source_mod.PriceInfo(price=300, source_name="楽天市場"),
+        ]
+        summary = price_source_mod.summarize_prices(prices)
+        assert summary["lowest"] == 100
+        assert summary["median"] == 250  # (200 + 300) / 2
+
+
+class TestPriceInfo:
+    def test_to_dict_includes_item_name_and_url(self):
+        info = price_source_mod.PriceInfo(
+            price=1234.0, source_name="楽天市場", item_name="サンプル商品", url="https://example.com/item"
+        )
+        assert info.to_dict() == {
+            "price": 1234.0,
+            "source_name": "楽天市場",
+            "item_name": "サンプル商品",
+            "url": "https://example.com/item",
+        }
+
+    def test_to_dict_defaults_are_empty_strings(self):
+        info = price_source_mod.PriceInfo(price=500, source_name="楽天市場")
+        assert info.to_dict()["item_name"] == ""
+        assert info.to_dict()["url"] == ""
+
+
+class TestRakutenThrottle:
+    def test_wait_sleeps_when_called_within_min_interval(self):
+        # 直前呼び出しから1秒未満で呼ばれた場合は、不足分だけ待機すること
+        # （毎秒1回程度のスロットリング）。time/sleepは注入して実時間を待たない。
+        clock = {"now": 0.0}
+        sleeps = []
+
+        def fake_time():
+            return clock["now"]
+
+        def fake_sleep(seconds):
+            sleeps.append(seconds)
+            clock["now"] += seconds
+
+        throttle = price_source_mod.RakutenThrottle(
+            min_interval=1.0, time_func=fake_time, sleep_func=fake_sleep
+        )
+        throttle.wait()  # 1回目: 待機なし
+        clock["now"] += 0.2  # 0.2秒後に2回目を呼ぶ
+        throttle.wait()
+
+        assert sleeps == [pytest.approx(0.8)]
+
+    def test_wait_does_not_sleep_when_interval_already_elapsed(self):
+        clock = {"now": 0.0}
+        sleeps = []
+
+        def fake_time():
+            return clock["now"]
+
+        def fake_sleep(seconds):
+            sleeps.append(seconds)
+
+        throttle = price_source_mod.RakutenThrottle(
+            min_interval=1.0, time_func=fake_time, sleep_func=fake_sleep
+        )
+        throttle.wait()
+        clock["now"] += 2.0  # 十分に間隔が空いている
+        throttle.wait()
+
+        assert sleeps == []
+
+
+class TestGetPriceComparisonSource:
+    def test_returns_disabled_source_without_app_id(self, monkeypatch):
+        monkeypatch.delenv("RAKUTEN_APP_ID", raising=False)
+        source = price_source_mod.get_price_comparison_source()
+        assert isinstance(source, price_source_mod.DisabledPriceComparisonSource)
+        assert source.is_available() is False
+
+    def test_returns_rakuten_source_with_app_id(self, monkeypatch):
+        monkeypatch.setenv("RAKUTEN_APP_ID", "dummy-app-id")
+        source = price_source_mod.get_price_comparison_source()
+        assert isinstance(source, price_source_mod.RakutenPriceSource)
+        assert source.is_available() is True
+
+    def test_disabled_source_app_body_still_works(self, monkeypatch):
+        # RAKUTEN_APP_ID未設定でもアプリ本体（検索リンク生成）は動作すること
+        monkeypatch.delenv("RAKUTEN_APP_ID", raising=False)
+        source = price_source_mod.get_price_comparison_source()
+        assert source.fetch_price("4901234567894") is None
+        assert source.get_search_links("4901234567894") != []
+
+
+class TestRakutenPriceSourceFetchPrices:
+    def _fake_opener(self, payload_bytes, should_raise=None):
+        def opener(url, timeout=None):
+            if should_raise:
+                raise should_raise
+
+            class _Resp:
+                def __enter__(self):
+                    return self
+
+                def __exit__(self, *exc_info):
+                    return False
+
+                def read(self):
+                    return payload_bytes
+
+            return _Resp()
+
+        return opener
+
+    def test_fetch_prices_parses_items(self):
+        import json as _json
+
+        payload = _json.dumps(
+            {
+                "Items": [
+                    {"itemName": "商品A", "itemPrice": 1500, "itemUrl": "https://item.rakuten.co.jp/a/"},
+                    {"itemName": "商品B", "itemPrice": 1200, "itemUrl": "https://item.rakuten.co.jp/b/"},
+                ]
+            }
+        ).encode("utf-8")
+        no_sleep_throttle = price_source_mod.RakutenThrottle(
+            min_interval=0.0, time_func=lambda: 0.0, sleep_func=lambda s: None
+        )
+        source = price_source_mod.RakutenPriceSource(
+            app_id="dummy", throttle=no_sleep_throttle, opener=self._fake_opener(payload)
+        )
+        prices = source.fetch_prices("4901234567894")
+        assert len(prices) == 2
+        assert {p.price for p in prices} == {1500.0, 1200.0}
+        cheapest = source.fetch_price("4901234567894")
+        assert cheapest.price == 1200.0
+
+    def test_fetch_prices_raises_on_network_error(self):
+        no_sleep_throttle = price_source_mod.RakutenThrottle(
+            min_interval=0.0, time_func=lambda: 0.0, sleep_func=lambda s: None
+        )
+        source = price_source_mod.RakutenPriceSource(
+            app_id="dummy",
+            throttle=no_sleep_throttle,
+            opener=self._fake_opener(b"", should_raise=OSError("network down")),
+        )
+        with pytest.raises(price_source_mod.PriceFetchError):
+            source.fetch_prices("4901234567894")
+
+    def test_fetch_prices_raises_when_app_id_missing(self):
+        source = price_source_mod.RakutenPriceSource(app_id=None)
+        with pytest.raises(price_source_mod.PriceFetchError):
+            source.fetch_prices("4901234567894")
+
+
+class TestApiPrices:
+    def test_returns_prices_lowest_and_median(self, client):
+        fake = _FakeComparisonSource(
+            prices=[
+                price_source_mod.PriceInfo(price=1500, source_name="楽天市場", item_name="商品A"),
+                price_source_mod.PriceInfo(price=1200, source_name="楽天市場", item_name="商品B"),
+            ]
+        )
+        with mock.patch.object(app_module, "get_price_comparison_source", return_value=fake):
+            res = client.get("/api/prices?jan=4901234567894")
+        assert res.status_code == 200
+        data = res.get_json()
+        assert data["ok"] is True
+        assert data["rakuten"]["lowest"] == 1200
+        assert data["rakuten"]["median"] == 1350  # (1200+1500)/2
+        assert data["rakuten"]["count"] == 2
+        assert "fetched_at" in data
+
+    def test_returns_503_when_disabled(self, client):
+        fake = _FakeComparisonSource(available=False)
+        with mock.patch.object(app_module, "get_price_comparison_source", return_value=fake):
+            res = client.get("/api/prices?jan=4901234567894")
+        assert res.status_code == 503
+        assert res.get_json()["ok"] is False
+
+    def test_returns_400_when_jan_missing(self, client):
+        res = client.get("/api/prices")
+        assert res.status_code == 400
+        assert res.get_json()["ok"] is False
+
+    def test_returns_502_and_error_message_on_fetch_failure(self, client):
+        fake = _FakeComparisonSource(error=price_source_mod.PriceFetchError("楽天市場APIの呼び出しに失敗しました。"))
+        with mock.patch.object(app_module, "get_price_comparison_source", return_value=fake):
+            res = client.get("/api/prices?jan=4901234567894")
+        assert res.status_code == 502
+        data = res.get_json()
+        assert data["ok"] is False
+        assert "楽天市場" in data["error"]
+
+    def test_no_products_found_returns_empty_summary(self, client):
+        fake = _FakeComparisonSource(prices=[])
+        with mock.patch.object(app_module, "get_price_comparison_source", return_value=fake):
+            res = client.get("/api/prices?jan=4901234567894")
+        assert res.status_code == 200
+        data = res.get_json()
+        assert data["rakuten"]["lowest"] is None
+        assert data["rakuten"]["median"] is None
+        assert data["rakuten"]["count"] == 0
+
+
+class TestIndexPricingComparisonUi:
+    def test_index_shows_disabled_messages_without_api_keys(self, client, monkeypatch):
+        monkeypatch.delenv("RAKUTEN_APP_ID", raising=False)
+        monkeypatch.delenv("YAHOO_CLIENT_ID", raising=False)
+        res = client.get("/")
+        assert res.status_code == 200
+        assert "価格比較".encode("utf-8") in res.data
+        assert b"window.RAKUTEN_ENABLED = false;" in res.data
+        assert b'window.YAHOO_CLIENT_ID = "";' in res.data
+
+    def test_index_enables_rakuten_when_app_id_set(self, client, monkeypatch):
+        monkeypatch.setenv("RAKUTEN_APP_ID", "dummy-app-id")
+        monkeypatch.delenv("YAHOO_CLIENT_ID", raising=False)
+        res = client.get("/")
+        assert res.status_code == 200
+        assert b"window.RAKUTEN_ENABLED = true;" in res.data
+
+    def test_index_passes_yahoo_client_id_to_js_when_set(self, client, monkeypatch):
+        monkeypatch.delenv("RAKUTEN_APP_ID", raising=False)
+        monkeypatch.setenv("YAHOO_CLIENT_ID", "dummy-client-id")
+        res = client.get("/")
+        assert res.status_code == 200
+        assert b'window.YAHOO_CLIENT_ID = "dummy-client-id";' in res.data
+
+    def test_price_comparison_disclaimer_shown_on_index(self, client):
+        res = client.get("/")
+        assert "取得時点における現在の販売価格".encode("utf-8") in res.data
+
+    def test_app_body_works_without_price_comparison_api_keys(self, client, monkeypatch):
+        # RAKUTEN_APP_ID/YAHOO_CLIENT_ID未設定でも、バーコード・利益計算・
+        # 登録・一覧などアプリ本体は従来通り動作すること。
+        monkeypatch.delenv("RAKUTEN_APP_ID", raising=False)
+        monkeypatch.delenv("YAHOO_CLIENT_ID", raising=False)
+        res = create_product(client)
+        assert res.status_code == 302
+        list_res = client.get("/products")
+        assert list_res.status_code == 200
+
+
+class TestNoScrapingModuleForPriceComparison:
+    def test_price_source_module_uses_only_stdlib_http(self):
+        # requests等のスクレイピング用ライブラリに依存していないこと
+        # （urllib標準ライブラリのみでAPI呼び出しを行う）。
+        forbidden_modules = ("requests", "bs4", "selenium", "scrapy")
+        for mod in forbidden_modules:
+            assert mod not in dir(price_source_mod)

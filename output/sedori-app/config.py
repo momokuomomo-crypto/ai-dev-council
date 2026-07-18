@@ -62,3 +62,33 @@ KOBUTSU_NOTICE_TEXT = (
     "無許可での古物営業は法律により罰せられる場合があります。せどり・転売を行う際は、"
     "対象となる商品や取引形態が古物営業法の適用対象かどうかを事前にご確認ください。"
 )
+
+# 横断価格比較機能（楽天市場API・Yahoo!ショッピングAPI）の設定。
+#
+# PythonAnywhere無料プランの外部通信ホワイトリストの検証結果を踏まえた構成:
+# - 楽天市場API(app.rakuten.co.jp)はホワイトリストに含まれるため、サーバー側
+#   （adapters/price_source.pyの楽天アダプター）から呼び出す。
+# - Yahoo!ショッピングAPI(shopping.yahooapis.jp)はホワイトリストに含まれない
+#   ため、ブラウザ側（JavaScript）から直接呼び出す構成とする。CORS等で取得
+#   できない場合は検索リンク提示のみへ自動フォールバックする。
+#
+# APIキー（RAKUTEN_APP_ID・YAHOO_CLIENT_ID）は.envで管理し、未設定の場合は
+# 本機能を無効化する。バーコード読み取り・利益計算などアプリ本体はAPIキー
+# なしでも従来通り動作する（写真判別機能のANTHROPIC_API_KEYと同じ方針）。
+RAKUTEN_API_URL = "https://app.rakuten.co.jp/services/api/IchibaItem/Search/20220601"
+RAKUTEN_API_TIMEOUT_SECONDS = 10
+RAKUTEN_SEARCH_HITS = 30
+# 楽天APIへのリクエスト間隔（秒）。毎秒1回程度のスロットリングを行う。
+RAKUTEN_THROTTLE_INTERVAL_SECONDS = 1.0
+
+# Yahoo!ショッピングAPI（クライアントサイド型のClient IDを想定）。
+# テンプレート経由でJSへ渡し、ブラウザから直接呼び出す。
+YAHOO_SHOPPING_API_URL = "https://shopping.yahooapis.jp/ShoppingWebService/V3/itemSearch"
+YAHOO_SEARCH_RESULTS = 20
+
+PRICE_COMPARISON_DISCLAIMER_TEXT = (
+    "表示される価格は楽天市場・Yahoo!ショッピングの取得時点における現在の販売価格であり、"
+    "実売相場・在庫状況・将来の販売価格を保証するものではありません。"
+    "最安値・中央値を想定売価欄に設定した場合も自動確定はされません。内容を必ずご自身で"
+    "ご確認・編集の上ご利用ください。"
+)

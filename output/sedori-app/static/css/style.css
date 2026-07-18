@@ -251,6 +251,29 @@ html, body {
   margin-top: 0;
 }
 
+.price-site-block {
+  margin-top: 12px;
+}
+
+.price-site-block h3 {
+  margin: 0 0 4px 0;
+  font-size: 0.95rem;
+}
+
+#price-summary p {
+  margin: 4px 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.btn-set-price {
+  width: auto;
+  padding: 6px 10px;
+  font-size: 0.8rem;
+}
+
 .product-list {
   display: flex;
   flex-direction: column;

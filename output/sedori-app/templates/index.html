@@ -125,6 +125,42 @@
     </form>
   </section>
 
+  <section class="card" id="price-comparison-section">
+    <h2>価格比較（楽天市場・Yahoo!ショッピング）</h2>
+    <p class="help-text">{{ price_comparison_disclaimer_text }}</p>
+    <div class="scan-controls">
+      <button id="price-fetch-btn" type="button" class="btn btn-secondary">🔍 現在価格を取得</button>
+    </div>
+    <p id="price-status" class="help-text"></p>
+
+    <div id="price-summary" class="card-inset" hidden>
+      <p>
+        最安値: <strong id="price-lowest">-</strong> 円
+        <button type="button" class="btn btn-secondary btn-set-price" data-target="lowest">想定売価に設定</button>
+      </p>
+      <p>
+        中央値: <strong id="price-median">-</strong> 円
+        <button type="button" class="btn btn-secondary btn-set-price" data-target="median">想定売価に設定</button>
+      </p>
+    </div>
+
+    <div class="price-site-block">
+      <h3>楽天市場</h3>
+      <p id="price-rakuten-status" class="help-text">
+        {% if rakuten_enabled %}未取得です。「現在価格を取得」を押してください。{% else %}楽天市場API未設定のため利用できません。{% endif %}
+      </p>
+      <ul class="ec-link-list" id="price-rakuten-list"></ul>
+    </div>
+
+    <div class="price-site-block">
+      <h3>Yahoo!ショッピング</h3>
+      <p id="price-yahoo-status" class="help-text">
+        {% if yahoo_client_id %}未取得です。「現在価格を取得」を押してください。{% else %}Yahoo!ショッピングAPI未設定のため利用できません（下部の検索リンクをご利用ください）。{% endif %}
+      </p>
+      <ul class="ec-link-list" id="price-yahoo-list"></ul>
+    </div>
+  </section>
+
   <section class="card">
     <h2>ECサイトで価格を調べる</h2>
     <p class="help-text">
@@ -148,6 +184,13 @@
 
 <script>
   window.EC_SITE_TEMPLATES = {{ ec_sites | tojson }};
+  // 横断価格比較機能: 楽天市場APIはサーバー側で有効/無効判定済み。
+  // Yahoo!ショッピングAPIはブラウザから直接呼び出すため、Client IDが
+  // 未設定の場合はJS側で機能を無効化し、検索リンク提示のみへフォールバックする。
+  window.RAKUTEN_ENABLED = {{ rakuten_enabled | tojson }};
+  window.YAHOO_CLIENT_ID = {{ yahoo_client_id | tojson }};
+  window.YAHOO_API_URL = {{ yahoo_api_url | tojson }};
+  window.YAHOO_SEARCH_RESULTS = {{ yahoo_search_results | tojson }};
 </script>
 <script src="{{ url_for('static', filename='js/scanner.js') }}"></script>
 <script src="{{ url_for('static', filename='js/app.js') }}"></script>

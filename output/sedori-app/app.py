@@ -3,6 +3,7 @@
 ルーティング、DB操作、利益計算、APIハンドラをまとめて実装する。
 """
 
+import os
 import sqlite3
 from datetime import datetime, timezone
 
@@ -18,7 +19,7 @@ except ImportError:
     pass
 
 import config
-from adapters.price_source import get_price_source
+from adapters.price_source import PriceFetchError, get_price_comparison_source, get_price_source, summarize_prices
 from adapters.product_identifier import get_product_identifier
 
 app = Flask(__name__)
@@ -239,6 +240,28 @@ def validate_settings_data(form):
 
 
 # ---------------------------------------------------------------------------
+# 横断価格比較機能（楽天市場API・Yahoo!ショッピングAPI）関連のヘルパー
+# ---------------------------------------------------------------------------
+
+def _price_comparison_context():
+    """商品登録・利益計算画面（index.html）で使う価格比較関連の描画コンテキスト。
+
+    楽天市場APIはサーバー側で有効/無効を判定して渡す。Yahoo!ショッピングAPIは
+    ブラウザ側から直接呼び出す構成のため、Client IDと呼び出し先URLのみを
+    テンプレート経由でJSへ渡す（未設定ならJS側で機能を無効化しリンク提示に
+    フォールバックする）。
+    """
+    comparison_source = get_price_comparison_source()
+    return {
+        "price_comparison_disclaimer_text": config.PRICE_COMPARISON_DISCLAIMER_TEXT,
+        "rakuten_enabled": comparison_source.is_available(),
+        "yahoo_client_id": os.environ.get("YAHOO_CLIENT_ID") or "",
+        "yahoo_api_url": config.YAHOO_SHOPPING_API_URL,
+        "yahoo_search_results": config.YAHOO_SEARCH_RESULTS,
+    }
+
+
+# ---------------------------------------------------------------------------
 # ルーティング
 # ---------------------------------------------------------------------------
 
@@ -256,6 +279,7 @@ def index():
         kobutsu_notice_text=config.KOBUTSU_NOTICE_TEXT,
         errors={},
         form_values={},
+        **_price_comparison_context(),
     )
 
 
@@ -285,6 +309,7 @@ def product_create():
             kobutsu_notice_text=config.KOBUTSU_NOTICE_TEXT,
             errors=errors,
             form_values=request.form,
+            **_price_comparison_context(),
         ), 400
 
     profit, profit_margin = calculate_profit(
@@ -419,6 +444,62 @@ def api_calculate():
 # モジュール読み込み時に行う（CREATE TABLE IF NOT EXISTSなので
 # 複数回呼ばれても問題ない）。baby-albumデプロイ時に確認済みのパターン。
 init_db()
+
+
+@app.route("/api/prices", methods=["GET"])
+def api_prices():
+    """横断価格比較機能: 楽天市場APIの現在販売価格一覧を返すAPI。
+
+    Yahoo!ショッピングAPIはPythonAnywhere無料プランのホワイトリストに
+    shopping.yahooapis.jp が含まれないため、ブラウザ側（JS）から直接
+    呼び出す構成とし、本エンドポイントでは扱わない。
+    RAKUTEN_APP_ID未設定の環境では503を返し、機能ボタン以外のアプリ本体
+    には影響しない。取得失敗時（一部サイト失敗を含む）は502を返し、
+    フロント側で再取得を促す表示につなげる。
+    """
+    jan_code = (request.args.get("jan") or "").strip()
+    if not jan_code:
+        return jsonify({"ok": False, "error": "JANコードを指定してください。"}), 400
+
+    comparison_source = get_price_comparison_source()
+    if not comparison_source.is_available():
+        return (
+            jsonify(
+                {
+                    "ok": False,
+                    "error": "価格比較機能は未設定です（サーバーにRAKUTEN_APP_IDの設定が必要）。",
+                    "disabled": True,
+                }
+            ),
+            503,
+        )
+
+    try:
+        prices = comparison_source.fetch_prices(jan_code)
+    except PriceFetchError as exc:
+        return (
+            jsonify(
+                {
+                    "ok": False,
+                    "error": str(exc) or "楽天市場の価格取得に失敗しました。時間をおいて再取得してください。",
+                }
+            ),
+            502,
+        )
+
+    summary = summarize_prices(prices)
+    return jsonify(
+        {
+            "ok": True,
+            "rakuten": {
+                "prices": [p.to_dict() for p in prices],
+                "lowest": summary["lowest"],
+                "median": summary["median"],
+                "count": summary["count"],
+            },
+            "fetched_at": datetime.now(timezone.utc).isoformat(),
+        }
+    )
 
 
 @app.route("/api/identify", methods=["POST"])
