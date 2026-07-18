@@ -351,13 +351,13 @@ def main_cli() -> int:
         message = (
             f"Gemini/OpenAIのAPIを最大{review_calls}回呼び出します"
             f"（実装レビュー最大{args.max_implementation_rounds}ラウンド×2社。"
-            "この回数にはClaude Agent SDKによる更新実行は含まれません — 別途確認します）。"
+            "この回数にはClaude Agent SDKによる更新実行は含まれません。別途確認します）。"
             "続行しますか？"
         )
     else:
         message = (
             "--no-review のため固定回数のAPI呼び出しはありません"
-            "（Claude Agent SDKによる更新実行のみ — 次で確認します）。続行しますか？"
+            "（Claude Agent SDKによる更新実行のみ。次で確認します）。続行しますか？"
         )
     if not confirm(message):
         print("中断しました。")
